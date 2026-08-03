@@ -55,7 +55,7 @@ pub fn send_url_scheme(_url: String) -> Result<()> {
 }
 
 pub async fn get_options_async() -> HashMap<String, String> {
-    HashMap::new()
+    Config::get_options()
 }
 
 pub fn start_pa() {}
