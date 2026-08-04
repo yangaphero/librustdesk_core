@@ -95,10 +95,31 @@ jobs:
           }
           rm -f "$sdk_archive"
           
-          if [ -d "$RUSTDESK_HARMONY_BUILD_DIR/OpenHarmony" ]; then
-            mv "$RUSTDESK_HARMONY_BUILD_DIR/OpenHarmony" "$sdk_root"
-          elif [ -d "$RUSTDESK_HARMONY_BUILD_DIR/sdk" ]; then
-            mv "$RUSTDESK_HARMONY_BUILD_DIR/sdk" "$sdk_root"
+          # 查找 SDK 实际目录
+          echo "Finding SDK directory..."
+          find "$RUSTDESK_HARMONY_BUILD_DIR" -maxdepth 3 -name "llvm" -type d | head -5
+          
+          # 自动查找包含 native/llvm/bin 的目录
+          SDK_PATH=$(find "$RUSTDESK_HARMONY_BUILD_DIR" -name "clang" -type f | head -1 | xargs dirname | xargs dirname | xargs dirname 2>/dev/null)
+          
+          if [ -n "$SDK_PATH" ] && [ -d "$SDK_PATH" ]; then
+            echo "Found SDK at: $SDK_PATH"
+            mv "$SDK_PATH" "$sdk_root"
+          else
+            echo "Trying to find SDK in extracted contents..."
+            ls -la "$RUSTDESK_HARMONY_BUILD_DIR"
+            # 尝试常见路径
+            if [ -d "$RUSTDESK_HARMONY_BUILD_DIR/OpenHarmony" ]; then
+              mv "$RUSTDESK_HARMONY_BUILD_DIR/OpenHarmony" "$sdk_root"
+            elif [ -d "$RUSTDESK_HARMONY_BUILD_DIR/sdk" ]; then
+              mv "$RUSTDESK_HARMONY_BUILD_DIR/sdk" "$sdk_root"
+            elif [ -d "$RUSTDESK_HARMONY_BUILD_DIR/OpenHarmonySDK" ]; then
+              mv "$RUSTDESK_HARMONY_BUILD_DIR/OpenHarmonySDK" "$sdk_root"
+            else
+              echo "ERROR: Cannot find SDK directory"
+              find "$RUSTDESK_HARMONY_BUILD_DIR" -maxdepth 3 -type d | head -20
+              exit 1
+            fi
           fi
           
           echo "SDK installed to: $sdk_root"
@@ -123,9 +144,6 @@ jobs:
           }
           
           VCPKG_BIN="$VCPKG_ROOT/vcpkg"
-          
-          # 使用系统提供的 aarch64 交叉编译器
-          export VCPKG_FORCE_SYSTEM_BINARIES=1
           
           echo "Installing libsodium for $TRIPLET..."
           "$VCPKG_BIN" install libsodium:"$TRIPLET" --triplet="$TRIPLET" || {
