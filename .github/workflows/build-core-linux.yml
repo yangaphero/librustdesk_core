@@ -194,6 +194,17 @@ jobs:
           echo "VCPKG_ROOT: $VCPKG_ROOT"
           echo "========================"
 
+      - name: 确保构建脚本可执行
+        run: |
+          chmod +x scripts/*.sh
+          for f in scripts/aarch64-unknown-linux-ohos-clang.sh \
+                   scripts/x86_64-unknown-linux-ohos-clang.sh \
+                   scripts/ohos-llvm-ar.sh \
+                   scripts/build_native_bridge.sh \
+                   scripts/_ohos-sdk-env.sh; do
+            test -x "$f" || { echo "ERROR: $f is not executable"; exit 1; }
+          done
+
       - name: 构建核心库
         run: |
           set -euo pipefail
@@ -203,18 +214,18 @@ jobs:
           export PKG_CONFIG_PATH="$VCPKG_INSTALLED_ROOT/$TRIPLET/lib/pkgconfig"
           export SODIUM_LIB_DIR="$VCPKG_INSTALLED_ROOT/$TRIPLET/lib"
           export SODIUM_INCLUDE_DIR="$VCPKG_INSTALLED_ROOT/$TRIPLET/include"
-          
+
           echo "=== Starting Build ==="
           echo "Building for target: $TARGET_TRIPLE"
           echo "Triplet: $TRIPLET"
           echo "SDK home: $OHOS_SDK_HOME"
           echo "Vcpkg root: $VCPKG_ROOT"
-          
+
           bash scripts/build_native_bridge.sh "$TARGET_TRIPLE" release 2>&1 || {
             echo "Build failed with exit code $?"
             exit 1
           }
-          
+
           echo "=== Build Completed ==="
 
       - name: 验证构建产物
