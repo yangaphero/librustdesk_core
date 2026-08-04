@@ -39,7 +39,7 @@ jobs:
       RUSTDESK_HARMONY_BUILD_DIR: ${{ github.workspace }}/_build
       CARGO_TARGET_DIR: ${{ github.workspace }}/_build/native_rust_core/target
       VCPKG_ROOT: ${{ github.workspace }}/_build/vcpkg
-      VCPKG_INSTALLED_ROOT: ${{ github.workspace }}/vcpkg/installed
+      VCPKG_INSTALLED_ROOT: ${{ github.workspace }}/_build/vcpkg/installed
       SDK_VERSION: 6.1.1.280
       SDK_REPO: ErBWs/ohos-sdk
 
@@ -75,7 +75,7 @@ jobs:
           echo "Downloading OHOS SDK from $SDK_REPO..."
           cd "$RUSTDESK_HARMONY_BUILD_DIR"
           
-          # 下载分卷压缩包（只有 2 个部分：.aa 和 .ab）
+          # 下载分卷压缩包
           for part in aa ab; do
             echo "Downloading part $part..."
             curl -L -f -o "ohos-sdk.$part" "https://github.com/$SDK_REPO/releases/download/$SDK_VERSION/ohos-sdk-linux-amd64.tar.gz.$part" || {
@@ -97,22 +97,14 @@ jobs:
           }
           rm -f "$sdk_archive"
           
-          # 检查解压结果
-          echo "Checking SDK structure..."
-          ls -la "$RUSTDESK_HARMONY_BUILD_DIR"
-          
-          # 找到 SDK 目录并移动
+          # 找到 SDK 目录
           if [ -d "$RUSTDESK_HARMONY_BUILD_DIR/OpenHarmony" ]; then
             mv "$RUSTDESK_HARMONY_BUILD_DIR/OpenHarmony" "$sdk_root"
           elif [ -d "$RUSTDESK_HARMONY_BUILD_DIR/sdk" ]; then
             mv "$RUSTDESK_HARMONY_BUILD_DIR/sdk" "$sdk_root"
-          elif [ -d "$RUSTDESK_HARMONY_BUILD_DIR/OpenHarmonySDK" ]; then
-            mv "$RUSTDESK_HARMONY_BUILD_DIR/OpenHarmonySDK" "$sdk_root"
           fi
           
           echo "SDK installed to: $sdk_root"
-          ls -la "$sdk_root" 2>/dev/null || true
-          ls -la "$sdk_root/native/llvm/bin/" 2>/dev/null || true
 
       - name: 安装 vcpkg
         run: |
@@ -128,18 +120,27 @@ jobs:
             exit 1
           }
           
+          # 使用完整路径
+          VCPKG_BIN="$VCPKG_ROOT/vcpkg"
+          if [ ! -x "$VCPKG_BIN" ]; then
+            VCPKG_BIN="$VCPKG_ROOT/vcpkg.exe"
+          fi
+          
+          echo "vcpkg binary: $VCPKG_BIN"
+          ls -la "$VCPKG_BIN" || true
+          
           export PATH="$VCPKG_ROOT:$PATH"
           
           echo "Installing libsodium..."
-          ./vcpkg install libsodium:${TRIPLET} --triplet ${TRIPLET} --x-use-system-packages || {
+          "$VCPKG_BIN" install libsodium:${TRIPLET} --triplet ${TRIPLET} --x-use-system-packages || {
             echo "Failed to install libsodium with system packages, retrying..."
-            ./vcpkg install libsodium:${TRIPLET} --triplet ${TRIPLET}
+            "$VCPKG_BIN" install libsodium:${TRIPLET} --triplet ${TRIPLET}
           }
           
           echo "Installing opus..."
-          ./vcpkg install opus:${TRIPLET} --triplet ${TRIPLET} --x-use-system-packages || {
+          "$VCPKG_BIN" install opus:${TRIPLET} --triplet ${TRIPLET} --x-use-system-packages || {
             echo "Failed to install opus with system packages, retrying..."
-            ./vcpkg install opus:${TRIPLET} --triplet ${TRIPLET}
+            "$VCPKG_BIN" install opus:${TRIPLET} --triplet ${TRIPLET}
           }
           
           echo "vcpkg installation completed"
@@ -148,17 +149,9 @@ jobs:
         run: |
           echo "=== Build Environment ==="
           echo "TARGET_TRIPLE: $TARGET_TRIPLE"
-          echo "CLANG_TARGET: $CLANG_TARGET"
-          echo "RUSTDESK_HARMONY_BUILD_DIR: $RUSTDESK_HARMONY_BUILD_DIR"
-          echo "VCPKG_ROOT: $VCPKG_ROOT"
           echo "OHOS_SDK_HOME: $OHOS_SDK_HOME"
+          echo "VCPKG_ROOT: $VCPKG_ROOT"
           echo "========================"
-          echo "Rust version:"
-          rustup --version
-          echo "Cargo version:"
-          cargo --version
-          echo "Clang version:"
-          "$OHOS_SDK_HOME/native/llvm/bin/clang" --version 2>/dev/null || echo "Clang not found"
 
       - name: 构建核心库
         run: |
@@ -168,11 +161,6 @@ jobs:
           
           echo "=== Starting Build ==="
           echo "Building for target: $TARGET_TRIPLE"
-          echo "SDK home: $OHOS_SDK_HOME"
-          
-          # 检查必要工具
-          ls -la "$OHOS_SDK_HOME/native/llvm/bin/" || echo "SDK tools not found"
-          ls -la "$VCPKG_ROOT/vcpkg" || echo "vcpkg not found"
           
           # 运行构建脚本
           bash scripts/build_native_bridge.sh ${{ matrix.target }} release 2>&1 || {
@@ -187,7 +175,6 @@ jobs:
           echo "=== Checking Build Artifacts ==="
           artifact_dir="$RUSTDESK_HARMONY_BUILD_DIR/native_rust_core/target/${{ matrix.target }}/release"
           echo "Artifact directory: $artifact_dir"
-          ls -la "$artifact_dir" || echo "Artifact directory not found"
           
           if [ -f "$artifact_dir/librustdesk_harmony_bridge.a" ]; then
             echo "✓ librustdesk_harmony_bridge.a found"
@@ -197,7 +184,7 @@ jobs:
             ls -lh "$artifact_dir/rustdesk_harmony_bridge.a"
           else
             echo "✗ No static library found!"
-            find "$artifact_dir" -name "*.a" -o -name "*.lib" 2>/dev/null | head -10
+            find "$artifact_dir" -name "*.a" 2>/dev/null | head -10
             exit 1
           fi
 
@@ -241,7 +228,6 @@ jobs:
           
           echo "Creating release: $tag"
           
-          # 创建 Release
           gh release create "$tag" \
             --title "HarmonyOS Core $tag" \
             --generate-notes \
@@ -252,4 +238,3 @@ jobs:
           }
           
           echo "Release created: $tag"
-          echo "tag=$tag" >> $GITHUB_OUTPUT
