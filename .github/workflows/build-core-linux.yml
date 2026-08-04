@@ -35,6 +35,7 @@ jobs:
     env:
       TARGET_TRIPLE: ${{ matrix.target }}
       CLANG_TARGET: ${{ matrix.clang_target }}
+      TRIPLET: ${{ matrix.triplet }}
       RUST_TOOLCHAIN_VERSION: "1.88.0"
       RUSTDESK_HARMONY_BUILD_DIR: ${{ github.workspace }}/_build
       CARGO_TARGET_DIR: ${{ github.workspace }}/_build/native_rust_core/target
@@ -75,7 +76,6 @@ jobs:
           echo "Downloading OHOS SDK from $SDK_REPO..."
           cd "$RUSTDESK_HARMONY_BUILD_DIR"
           
-          # 下载分卷压缩包
           for part in aa ab; do
             echo "Downloading part $part..."
             curl -L -f -o "ohos-sdk.$part" "https://github.com/$SDK_REPO/releases/download/$SDK_VERSION/ohos-sdk-linux-amd64.tar.gz.$part" || {
@@ -84,12 +84,10 @@ jobs:
             }
           done
           
-          # 合并分卷
           echo "Merging parts..."
           cat ohos-sdk.aa ohos-sdk.ab > "$sdk_archive"
           rm -f ohos-sdk.aa ohos-sdk.ab
           
-          # 解压
           echo "Extracting SDK..."
           tar -xzf "$sdk_archive" -C "$RUSTDESK_HARMONY_BUILD_DIR" || {
             echo "Failed to extract SDK"
@@ -97,7 +95,6 @@ jobs:
           }
           rm -f "$sdk_archive"
           
-          # 找到 SDK 目录
           if [ -d "$RUSTDESK_HARMONY_BUILD_DIR/OpenHarmony" ]; then
             mv "$RUSTDESK_HARMONY_BUILD_DIR/OpenHarmony" "$sdk_root"
           elif [ -d "$RUSTDESK_HARMONY_BUILD_DIR/sdk" ]; then
@@ -109,7 +106,6 @@ jobs:
       - name: 安装 vcpkg
         run: |
           echo "Preparing vcpkg..."
-          # 删除已有的 vcpkg 目录
           rm -rf "$VCPKG_ROOT"
           mkdir -p "$VCPKG_ROOT"
           
@@ -127,16 +123,16 @@ jobs:
           
           VCPKG_BIN="$VCPKG_ROOT/vcpkg"
           
-          echo "Installing libsodium..."
-          "$VCPKG_BIN" install libsodium:${TRIPLET} --triplet ${TRIPLET} --x-use-system-packages || {
-            echo "Failed to install libsodium with system packages, retrying..."
-            "$VCPKG_BIN" install libsodium:${TRIPLET} --triplet ${TRIPLET}
+          echo "Installing libsodium for $TRIPLET..."
+          "$VCPKG_BIN" install libsodium:"$TRIPLET" --triplet="$TRIPLET" || {
+            echo "Failed to install libsodium"
+            exit 1
           }
           
-          echo "Installing opus..."
-          "$VCPKG_BIN" install opus:${TRIPLET} --triplet ${TRIPLET} --x-use-system-packages || {
-            echo "Failed to install opus with system packages, retrying..."
-            "$VCPKG_BIN" install opus:${TRIPLET} --triplet ${TRIPLET}
+          echo "Installing opus for $TRIPLET..."
+          "$VCPKG_BIN" install opus:"$TRIPLET" --triplet="$TRIPLET" || {
+            echo "Failed to install opus"
+            exit 1
           }
           
           echo "vcpkg installation completed"
@@ -145,6 +141,7 @@ jobs:
         run: |
           echo "=== Build Environment ==="
           echo "TARGET_TRIPLE: $TARGET_TRIPLE"
+          echo "TRIPLET: $TRIPLET"
           echo "OHOS_SDK_HOME: $OHOS_SDK_HOME"
           echo "VCPKG_ROOT: $VCPKG_ROOT"
           echo "========================"
@@ -157,8 +154,9 @@ jobs:
           
           echo "=== Starting Build ==="
           echo "Building for target: $TARGET_TRIPLE"
+          echo "Triplet: $TRIPLET"
           
-          bash scripts/build_native_bridge.sh ${{ matrix.target }} release 2>&1 || {
+          bash scripts/build_native_bridge.sh "$TARGET_TRIPLE" release 2>&1 || {
             echo "Build failed with exit code $?"
             exit 1
           }
