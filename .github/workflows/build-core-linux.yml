@@ -65,7 +65,6 @@ jobs:
         run: |
           mkdir -p "$RUSTDESK_HARMONY_BUILD_DIR" "$VCPKG_ROOT" "$VCPKG_INSTALLED_ROOT"
           echo "Build directory created"
-          ls -la "$RUSTDESK_HARMONY_BUILD_DIR"
 
       - name: 下载 OHOS SDK
         run: |
@@ -76,10 +75,10 @@ jobs:
           echo "Downloading OHOS SDK from $SDK_REPO..."
           cd "$RUSTDESK_HARMONY_BUILD_DIR"
           
-          # 下载分卷压缩包
-          for part in $(seq -w 1 10); do
+          # 下载分卷压缩包（只有 2 个部分：.aa 和 .ab）
+          for part in aa ab; do
             echo "Downloading part $part..."
-            curl -L -f -o "ohos-sdk.part.$part" "https://github.com/$SDK_REPO/releases/download/$SDK_VERSION/ohos-sdk-linux-amd64.tar.gz.$part" || {
+            curl -L -f -o "ohos-sdk.$part" "https://github.com/$SDK_REPO/releases/download/$SDK_VERSION/ohos-sdk-linux-amd64.tar.gz.$part" || {
               echo "Failed to download part $part"
               exit 1
             }
@@ -87,8 +86,8 @@ jobs:
           
           # 合并分卷
           echo "Merging parts..."
-          cat ohos-sdk.part.* > "$sdk_archive"
-          rm -f ohos-sdk.part.*
+          cat ohos-sdk.aa ohos-sdk.ab > "$sdk_archive"
+          rm -f ohos-sdk.aa ohos-sdk.ab
           
           # 解压
           echo "Extracting SDK..."
@@ -96,16 +95,19 @@ jobs:
             echo "Failed to extract SDK"
             exit 1
           }
+          rm -f "$sdk_archive"
           
           # 检查解压结果
           echo "Checking SDK structure..."
           ls -la "$RUSTDESK_HARMONY_BUILD_DIR"
           
-          # 找到 SDK 目录
+          # 找到 SDK 目录并移动
           if [ -d "$RUSTDESK_HARMONY_BUILD_DIR/OpenHarmony" ]; then
             mv "$RUSTDESK_HARMONY_BUILD_DIR/OpenHarmony" "$sdk_root"
           elif [ -d "$RUSTDESK_HARMONY_BUILD_DIR/sdk" ]; then
             mv "$RUSTDESK_HARMONY_BUILD_DIR/sdk" "$sdk_root"
+          elif [ -d "$RUSTDESK_HARMONY_BUILD_DIR/OpenHarmonySDK" ]; then
+            mv "$RUSTDESK_HARMONY_BUILD_DIR/OpenHarmonySDK" "$sdk_root"
           fi
           
           echo "SDK installed to: $sdk_root"
@@ -130,13 +132,13 @@ jobs:
           
           echo "Installing libsodium..."
           ./vcpkg install libsodium:${TRIPLET} --triplet ${TRIPLET} --x-use-system-packages || {
-            echo "Failed to install libsodium, trying without system packages..."
+            echo "Failed to install libsodium with system packages, retrying..."
             ./vcpkg install libsodium:${TRIPLET} --triplet ${TRIPLET}
           }
           
           echo "Installing opus..."
           ./vcpkg install opus:${TRIPLET} --triplet ${TRIPLET} --x-use-system-packages || {
-            echo "Failed to install opus, trying without system packages..."
+            echo "Failed to install opus with system packages, retrying..."
             ./vcpkg install opus:${TRIPLET} --triplet ${TRIPLET}
           }
           
