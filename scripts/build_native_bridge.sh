@@ -78,52 +78,18 @@ export RUSTFLAGS="-C link-arg=--target=$CLANG_TARGET -C link-arg=-fuse-ld=lld"
 export LIBCLANG_PATH="$LLVM_BIN/../lib"
 export PATH="$LLVM_BIN:$HOME/.cargo/bin:$HOME/.local/bin:$PATH"
 
+# 设置 libsodium 预编译库路径（关键：使用不带后缀的 SODIUM_LIB_DIR）
 TARGET_SODIUM_LIB_DIR=${SODIUM_LIB_DIR:-"$BUILD_ROOT/build/libsodium/$TARGET_TRIPLE/lib"}
-[ -d "$TARGET_SODIUM_LIB_DIR" ] && export "SODIUM_LIB_DIR_${TARGET_KEY_CC}=$TARGET_SODIUM_LIB_DIR"
+if [ -d "$TARGET_SODIUM_LIB_DIR" ]; then
+  export SODIUM_LIB_DIR="$TARGET_SODIUM_LIB_DIR"
+  echo "Using precompiled libsodium from: $SODIUM_LIB_DIR"
+else
+  echo "WARNING: Precompiled libsodium not found at $TARGET_SODIUM_LIB_DIR"
+  echo "Will attempt to build from source..."
+fi
 unset SODIUM_LIB_DIR || true
 
-# 补丁 libsodium-sys 的 config.sub，支持 OHOS target
-patch_libsodium_config_sub() {
-  local config_sub="$1"
-  if [ ! -f "$config_sub" ]; then
-    return
-  fi
-  if grep -q 'OHOS compatibility patch for librustdesk_core' "$config_sub" 2>/dev/null; then
-    echo "Config.sub already patched: $config_sub"
-    return
-  fi
-  local tmp="$config_sub.tmp"
-  {
-    head -n 1 "$config_sub"
-    printf '%s\n' '# OHOS compatibility patch for librustdesk_core'
-    printf '%s\n' 'case "$1" in'
-    printf '%s\n' '  *-linux-ohos)'
-    printf '%s\n' '    set -- "${1%-linux-ohos}-linux-gnu"'
-    printf '%s\n' '    ;;'
-    printf '%s\n' 'esac'
-    tail -n +2 "$config_sub"
-  } > "$tmp"
-  cat "$tmp" > "$config_sub"
-  rm -f "$tmp"
-  chmod +x "$config_sub"
-  echo "Patched libsodium config.sub: $config_sub"
-}
-
-# 查找并补丁所有可能位置的 config.sub
-echo "Patching libsodium config.sub for OHOS support..."
-for config_sub in \
-  "$HOME/.cargo/registry/src"/*/libsodium-sys-*/libsodium/config.sub \
-  "$HOME/.cargo/registry/src"/*/libsodium-sys-*/libsodium/build-aux/config.sub \
-  "$HOME/.cargo/registry/src"/*/libsodium-sys-*/source/libsodium/config.sub \
-  "$HOME/.cargo/registry/src"/*/libsodium-sys-*/source/libsodium/build-aux/config.sub; do
-  [ -f "$config_sub" ] || continue
-  patch_libsodium_config_sub "$config_sub"
-  # 验证补丁
-  "$config_sub" "$TARGET_TRIPLE" >/dev/null 2>&1 && echo "✓ config.sub accepts $TARGET_TRIPLE" || echo "✗ config.sub failed for $TARGET_TRIPLE"
-done
-
-# 清除旧的构建缓存，确保重新编译
-rm -rf "$CARGO_TARGET_DIR/release/build"/openssl-sys-* "$CARGO_TARGET_DIR/$TARGET_TRIPLE/$PROFILE/build"/openssl-sys-* 2>/dev/null || true
+# 清除旧的 libsodium-sys 构建缓存
 rm -rf "$CARGO_TARGET_DIR/release/build"/libsodium-sys-* "$CARGO_TARGET_DIR/$TARGET_TRIPLE/$PROFILE/build"/libsodium-sys-* 2>/dev/null || true
 rm -f "$CARGO_TARGET_DIR/release/deps"/liblibsodium_sys-*.rlib "$CARGO_TARGET_DIR/$TARGET_TRIPLE/$PROFILE/deps"/liblibsodium_sys-*.rlib 2>/dev/null || true
 

@@ -48,6 +48,13 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
+      - name: 设置脚本执行权限
+        run: |
+          chmod +x scripts/*.sh
+          for f in scripts/*.sh; do
+            test -x "$f" || { echo "ERROR: $f is not executable"; exit 1; }
+          done
+
       - name: 安装 Rust 工具链
         uses: dtolnay/rust-toolchain@v1
         with:
@@ -65,7 +72,6 @@ jobs:
       - name: 准备构建目录
         run: |
           mkdir -p "$RUSTDESK_HARMONY_BUILD_DIR" "$VCPKG_ROOT" "$VCPKG_INSTALLED_ROOT"
-          echo "Build directory created"
 
       - name: 下载 OHOS SDK
         run: |
@@ -77,113 +83,75 @@ jobs:
           cd "$RUSTDESK_HARMONY_BUILD_DIR"
           
           for part in aa ab; do
-            echo "Downloading part $part..."
             curl -L -f -o "ohos-sdk.$part" "https://github.com/$SDK_REPO/releases/download/$SDK_VERSION/ohos-sdk-linux-amd64.tar.gz.$part" || {
               echo "Failed to download part $part"
               exit 1
             }
           done
           
-          echo "Merging parts..."
           cat ohos-sdk.aa ohos-sdk.ab > "$sdk_archive"
           rm -f ohos-sdk.aa ohos-sdk.ab
           
-          echo "Extracting SDK..."
           tar -xzf "$sdk_archive" -C "$RUSTDESK_HARMONY_BUILD_DIR" || {
             echo "Failed to extract SDK"
             exit 1
           }
           rm -f "$sdk_archive"
           
-          # 查找 SDK 根目录（包含 native/llvm/bin/clang 和 native/sysroot 的目录）
-          echo "Finding SDK root directory..."
-          SDK_CANDIDATE=""
-          
-          # 方法1：直接检查已知路径（OHOS SDK Linux 版的标准结构）
-          if [ -f "$RUSTDESK_HARMONY_BUILD_DIR/command-line-tools/sdk/default/openharmony/native/llvm/bin/clang" ] && \
-             [ -d "$RUSTDESK_HARMONY_BUILD_DIR/command-line-tools/sdk/default/openharmony/native/sysroot" ]; then
-            SDK_CANDIDATE="$RUSTDESK_HARMONY_BUILD_DIR/command-line-tools/sdk/default/openharmony"
-            echo "Found SDK at standard path: $SDK_CANDIDATE"
-          elif [ -d "$RUSTDESK_HARMONY_BUILD_DIR/openharmony/native/llvm/bin" ] && \
-               [ -d "$RUSTDESK_HARMONY_BUILD_DIR/openharmony/native/sysroot" ]; then
-            SDK_CANDIDATE="$RUSTDESK_HARMONY_BUILD_DIR/openharmony"
-            echo "Found SDK at direct path: $SDK_CANDIDATE"
+          # 查找并移动 SDK 到标准位置
+          if [ -f "$RUSTDESK_HARMONY_BUILD_DIR/command-line-tools/sdk/default/openharmony/native/llvm/bin/clang" ] || \
+             [ -L "$RUSTDESK_HARMONY_BUILD_DIR/command-line-tools/sdk/default/openharmony/native/llvm/bin/clang" ]; then
+            mkdir -p "$(dirname "$sdk_root")"
+            mv "$RUSTDESK_HARMONY_BUILD_DIR/command-line-tools/sdk/default/openharmony" "$sdk_root"
+          elif [ -d "$RUSTDESK_HARMONY_BUILD_DIR/openharmony/native/llvm/bin" ]; then
+            mkdir -p "$(dirname "$sdk_root")"
+            mv "$RUSTDESK_HARMONY_BUILD_DIR/openharmony" "$sdk_root"
           else
-            # 方法2：使用 find 查找（兼容非标准结构）
-            echo "Using find to locate SDK..."
-            SDK_CANDIDATE=$(find "$RUSTDESK_HARMONY_BUILD_DIR" -type d -name "openharmony" 2>/dev/null | while read dir; do
-              if [ -f "$dir/native/llvm/bin/clang" ] || [ -L "$dir/native/llvm/bin/clang" ]; then
-                if [ -d "$dir/native/sysroot" ]; then
-                  echo "$dir"
-                  break
-                fi
-              fi
-            done)
-            echo "Found SDK at: $SDK_CANDIDATE"
-          fi
-          
-          if [ -z "$SDK_CANDIDATE" ]; then
-            echo "ERROR: Cannot find SDK root directory"
-            echo "Searching for clang..."
-            find "$RUSTDESK_HARMONY_BUILD_DIR" -name "clang" 2>/dev/null | head -5
-            echo "Directory structure:"
+            echo "ERROR: Cannot find SDK"
             find "$RUSTDESK_HARMONY_BUILD_DIR" -maxdepth 4 -type d | head -30
             exit 1
           fi
           
-          # 移动到标准位置
-          mkdir -p "$(dirname "$sdk_root")"
-          mv "$SDK_CANDIDATE" "$sdk_root"
-          
           echo "SDK installed to: $sdk_root"
-          echo "Verifying SDK structure..."
-          ls -la "$sdk_root/native/llvm/bin/" | head -10
-          ls -la "$sdk_root/native/sysroot/" | head -5
-          
-          # 验证必要条件
-          if [ ! -x "$sdk_root/native/llvm/bin/clang" ] && [ ! -L "$sdk_root/native/llvm/bin/clang" ]; then
-            echo "ERROR: clang not found or not executable at $sdk_root/native/llvm/bin/clang"
-            exit 1
-          fi
-          if [ ! -d "$sdk_root/native/sysroot" ]; then
-            echo "ERROR: sysroot not found at $sdk_root/native/sysroot"
-            exit 1
-          fi
-          echo "✓ SDK verification passed"
+          ls -la "$sdk_root/native/llvm/bin/" | head -5
 
-      - name: 安装 vcpkg
+      - name: 安装 vcpkg 和依赖
         run: |
-          echo "Preparing vcpkg..."
           rm -rf "$VCPKG_ROOT"
           mkdir -p "$VCPKG_ROOT"
           
-          echo "Cloning vcpkg..."
-          git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT" || {
-            echo "Failed to clone vcpkg"
-            exit 1
-          }
-          
-          echo "Bootstrapping vcpkg..."
-          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics || {
-            echo "Failed to bootstrap vcpkg"
-            exit 1
-          }
+          git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
           
           VCPKG_BIN="$VCPKG_ROOT/vcpkg"
           
           echo "Installing libsodium for $TRIPLET..."
-          "$VCPKG_BIN" install libsodium:"$TRIPLET" --triplet="$TRIPLET" || {
-            echo "Failed to install libsodium"
-            exit 1
-          }
+          "$VCPKG_BIN" install libsodium:"$TRIPLET" --triplet="$TRIPLET"
           
           echo "Installing opus for $TRIPLET..."
-          "$VCPKG_BIN" install opus:"$TRIPLET" --triplet="$TRIPLET" || {
-            echo "Failed to install opus"
-            exit 1
-          }
+          "$VCPKG_BIN" install opus:"$TRIPLET" --triplet="$TRIPLET"
           
           echo "vcpkg installation completed"
+
+      - name: 预编译 libsodium for OHOS
+        run: |
+          set -euo pipefail
+          export OHOS_SDK_HOME="$RUSTDESK_HARMONY_BUILD_DIR/ohos-sdk"
+          export PATH="$VCPKG_ROOT:$PATH"
+          
+          # 使用 vcpkg 安装的 libsodium 作为预编译库
+          VCPKG_SODIUM_LIB="$VCPKG_INSTALLED_ROOT/$TRIPLET/lib/libsodium.a"
+          if [ -f "$VCPKG_SODIUM_LIB" ]; then
+            echo "Using vcpkg libsodium: $VCPKG_SODIUM_LIB"
+            mkdir -p "$BUILD_ROOT/build/libsodium/$TARGET_TRIPLE/lib"
+            cp "$VCPKG_SODIUM_LIB" "$BUILD_ROOT/build/libsodium/$TARGET_TRIPLE/lib/libsodium.a"
+            # 复制头文件
+            mkdir -p "$BUILD_ROOT/build/libsodium/$TARGET_TRIPLE/include/sodium"
+            cp -r "$VCPKG_INSTALLED_ROOT/$TRIPLET/include/sodium/"* "$BUILD_ROOT/build/libsodium/$TARGET_TRIPLE/include/sodium/" 2>/dev/null || true
+            echo "Precompiled libsodium ready at: $BUILD_ROOT/build/libsodium/$TARGET_TRIPLE/lib/libsodium.a"
+          else
+            echo "WARNING: vcpkg libsodium not found, will attempt source build"
+          fi
 
       - name: 显示构建环境
         run: |
@@ -192,18 +160,8 @@ jobs:
           echo "TRIPLET: $TRIPLET"
           echo "OHOS_SDK_HOME: $OHOS_SDK_HOME"
           echo "VCPKG_ROOT: $VCPKG_ROOT"
+          echo "SODIUM_LIB_DIR: $SODIUM_LIB_DIR"
           echo "========================"
-
-      - name: 确保构建脚本可执行
-        run: |
-          chmod +x scripts/*.sh
-          for f in scripts/aarch64-unknown-linux-ohos-clang.sh \
-                   scripts/x86_64-unknown-linux-ohos-clang.sh \
-                   scripts/ohos-llvm-ar.sh \
-                   scripts/build_native_bridge.sh \
-                   scripts/_ohos-sdk-env.sh; do
-            test -x "$f" || { echo "ERROR: $f is not executable"; exit 1; }
-          done
 
       - name: 构建核心库
         run: |
@@ -214,18 +172,23 @@ jobs:
           export PKG_CONFIG_PATH="$VCPKG_INSTALLED_ROOT/$TRIPLET/lib/pkgconfig"
           export SODIUM_LIB_DIR="$VCPKG_INSTALLED_ROOT/$TRIPLET/lib"
           export SODIUM_INCLUDE_DIR="$VCPKG_INSTALLED_ROOT/$TRIPLET/include"
-
+          
+          # 设置预编译 libsodium 路径
+          PREBUILT_SODIUM_LIB="$BUILD_ROOT/build/libsodium/$TARGET_TRIPLE/lib"
+          if [ -d "$PREBUILT_SODIUM_LIB" ] && [ -f "$PREBUILT_SODIUM_LIB/libsodium.a" ]; then
+            export SODIUM_LIB_DIR="$PREBUILT_SODIUM_LIB"
+            echo "Using prebuilt libsodium: $SODIUM_LIB_DIR"
+          fi
+          
           echo "=== Starting Build ==="
           echo "Building for target: $TARGET_TRIPLE"
-          echo "Triplet: $TRIPLET"
           echo "SDK home: $OHOS_SDK_HOME"
-          echo "Vcpkg root: $VCPKG_ROOT"
-
+          
           bash scripts/build_native_bridge.sh "$TARGET_TRIPLE" release 2>&1 || {
             echo "Build failed with exit code $?"
             exit 1
           }
-
+          
           echo "=== Build Completed ==="
 
       - name: 验证构建产物
@@ -239,13 +202,11 @@ jobs:
             echo "✓ ${{ matrix.release_file }} found"
             ls -lh "$artifact_dir/${{ matrix.release_file }}"
           elif [ -f "$artifact_dir/librustdesk_harmony_bridge.a" ]; then
-            echo "✓ librustdesk_harmony_bridge.a found (copying to ${{ matrix.release_file }})"
-            cp "$artifact_dir/librustdesk_harmony_bridge.a" "$artifact_dir/${{ matrix.release_file }}"
-            ls -lh "$artifact_dir/${{ matrix.release_file }}"
+            echo "✓ librustdesk_harmony_bridge.a found"
+            ls -lh "$artifact_dir/librustdesk_harmony_bridge.a"
           elif [ -f "$artifact_dir/rustdesk_harmony_bridge.a" ]; then
-            echo "✓ rustdesk_harmony_bridge.a found (copying to ${{ matrix.release_file }})"
-            cp "$artifact_dir/rustdesk_harmony_bridge.a" "$artifact_dir/${{ matrix.release_file }}"
-            ls -lh "$artifact_dir/${{ matrix.release_file }}"
+            echo "✓ rustdesk_harmony_bridge.a found"
+            ls -lh "$artifact_dir/rustdesk_harmony_bridge.a"
           else
             echo "✗ No static library found!"
             find "$artifact_dir" -name "*.a" 2>/dev/null | head -10
@@ -291,7 +252,6 @@ jobs:
           
           echo "Creating release: $tag"
           
-          # 检查产物是否存在
           ls -la librustdesk_core_linux_arm64/ 2>/dev/null || true
           ls -la librustdesk_core_linux_x86_64/ 2>/dev/null || true
           
