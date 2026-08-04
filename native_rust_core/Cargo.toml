@@ -16,3 +16,6 @@ machine-uid = { path = "../patches/machine-uid/381ff57" }
 
 [patch."https://github.com/rustdesk-org/rdev"]
 rdev = { git = "https://github.com/liyan-lucky/rdev", rev = "cf6fe32254d0e31d67f819d61f996372243b99e5" }
+
+[patch.crates-io]
+libsodium-sys = { path = "../patches/libsodium-sys/0.2.7" }
