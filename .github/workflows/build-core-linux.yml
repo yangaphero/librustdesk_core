@@ -58,7 +58,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            build-essential cmake ninja-build autoconf automake libtool \
+            build-essential cmake ninja-build autoconf automake libtool autoconf-archive \
             pkg-config perl python3 curl git unzip p7zip-full \
             libssl-dev tar gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
