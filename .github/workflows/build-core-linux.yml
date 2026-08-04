@@ -40,6 +40,8 @@ jobs:
       CARGO_TARGET_DIR: ${{ github.workspace }}/_build/native_rust_core/target
       VCPKG_ROOT: ${{ github.workspace }}/_build/vcpkg
       VCPKG_INSTALLED_ROOT: ${{ github.workspace }}/vcpkg/installed
+      SDK_VERSION: 6.1.1.280
+      SDK_REPO: ErBWs/ohos-sdk
 
     steps:
       - name: 检出代码
@@ -56,13 +58,38 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             build-essential cmake ninja-build autoconf automake libtool \
             pkg-config perl python3 curl git unzip p7zip-full \
-            libssl-dev
+            libssl-dev join
 
       - name: 准备构建目录
         run: |
           mkdir -p "$RUSTDESK_HARMONY_BUILD_DIR" "$VCPKG_ROOT" "$VCPKG_INSTALLED_ROOT"
 
-      - name: 安装 vcpkg
+      - name: 下载 OHOS SDK
+        run: |
+          set -euo pipefail
+          sdk_archive="$RUSTDESK_HARMONY_BUILD_DIR/ohos-sdk.tar.gz"
+          sdk_root="$RUSTDESK_HARMONY_BUILD_DIR/ohos-sdk"
+          
+          # 下载分卷压缩包
+          cd "$RUSTDESK_HARMONY_BUILD_DIR"
+          for part in $(seq -w 1 10); do
+            echo "Downloading ohos-sdk part $part..."
+            curl -L -O "https://github.com/$SDK_REPO/releases/download/$SDK_VERSION/ohos-sdk-linux-amd64.tar.gz.$part"
+          done
+          
+          # 合并分卷
+          cat ohos-sdk-linux-amd64.tar.gz.* > "$sdk_archive"
+          rm -f ohos-sdk-linux-amd64.tar.gz.*
+          
+          # 解压
+          tar -xzf "$sdk_archive" -C "$RUSTDESK_HARMONY_BUILD_DIR"
+          mv "$RUSTDESK_HARMONY_BUILD_DIR/OpenHarmony" "$sdk_root" || true
+          mv "$RUSTDESK_HARMONY_BUILD_DIR/sdk" "$sdk_root" || true
+          
+          echo "SDK installed to: $sdk_root"
+          ls -la "$sdk_root"
+
+      - name: 安装 vcpkg 和依赖
         run: |
           git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
           "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
@@ -73,7 +100,7 @@ jobs:
       - name: 构建核心库
         run: |
           export PATH="$VCPKG_ROOT:$PATH"
-          export OHOS_SDK_HOME=/usr/local/harmony-sdk
+          export OHOS_SDK_HOME="$RUSTDESK_HARMONY_BUILD_DIR/ohos-sdk"
           bash scripts/build_native_bridge.sh ${{ matrix.target }} release
 
       - name: 上传构建产物
@@ -117,5 +144,3 @@ jobs:
             --generate-notes \
             librustdesk_core_linux_arm64/librustdesk_core.a \
             librustdesk_core_linux_x86_64/librustdesk_core.a
-          
-          echo "tag=$tag" >> $GITHUB_OUTPUT
