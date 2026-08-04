@@ -47,34 +47,35 @@ jobs:
           set -euo pipefail
           echo "等待构建完成..."
           
-          for i in $(seq 1 60); do
-            # 等待几秒
-            sleep 15
-            
-            # 检查是否有成功的构建完成
-            run_status=$(gh run list --repo "${{ github.repository }}" --workflow build-core-linux.yml --branch "$REF_NAME" --limit 5 --json status,conclusion,createdAt --jq '.[0].status // "unknown"')
-            run_conclusion=$(gh run list --repo "${{ github.repository }}" --workflow build-core-linux.yml --branch "$REF_NAME" --limit 5 --json status,conclusion,createdAt --jq '.[0].conclusion // "unknown"')
-            
-            echo "当前构建状态: $run_status, 结论: $run_conclusion"
-            
-            if [ "$run_status" = "completed" ]; then
-              if [ "$run_conclusion" = "success" ]; then
-                echo "✓ 构建成功完成"
-                run_id=$(gh run list --repo "${{ github.repository }}" --workflow build-core-linux.yml --branch "$REF_NAME" --limit 1 --json databaseId --jq '.[0].databaseId')
-                echo "linux_run_id=$run_id" >> "$GITHUB_OUTPUT"
-                break
-              elif [ "$run_conclusion" = "failure" ]; then
-                echo "✗ 构建失败"
-                exit 1
-              fi
-            fi
-            
-            echo "等待中... ($i)"
-          done
+          # 等待最多 180 分钟
+          run_id=$(gh run watch --repo "${{ github.repository }}" --workflow build-core-linux.yml --branch "$REF_NAME" --limit 1 --watch --json databaseId --jq '.[0].databaseId' || true)
           
-          # 获取最新的 run ID
-          run_id=$(gh run list --repo "${{ github.repository }}" --workflow build-core-linux.yml --branch "$REF_NAME" --limit 1 --json databaseId --jq '.[0].databaseId')
-          echo "linux_run_id=$run_id" >> "$GITHUB_OUTPUT"
+          # 如果 watch 失败或未返回，尝试手动检查
+          if [ -z "$run_id" ] || [ "$run_id" = "null" ]; then
+            echo "gh run watch 未能获取 run ID，尝试手动检测..."
+            for i in $(seq 1 720); do
+              sleep 15
+              run_status=$(gh run list --repo "${{ github.repository }}" --workflow build-core-linux.yml --branch "$REF_NAME" --limit 1 --json status,conclusion --jq '.[0].status // "unknown"' || echo "unknown")
+              run_conclusion=$(gh run list --repo "${{ github.repository }}" --workflow build-core-linux.yml --branch "$REF_NAME" --limit 1 --json conclusion --jq '.[0].conclusion // "unknown"' || echo "unknown")
+              
+              echo "当前构建状态: $run_status, 结论: $run_conclusion (等待 $i 轮)"
+              
+              if [ "$run_status" = "completed" ]; then
+                if [ "$run_conclusion" = "success" ]; then
+                  echo "✓ 构建成功完成"
+                  run_id=$(gh run list --repo "${{ github.repository }}" --workflow build-core-linux.yml --branch "$REF_NAME" --limit 1 --json databaseId --jq '.[0].databaseId')
+                  echo "linux_run_id=$run_id" >> "$GITHUB_OUTPUT"
+                  break
+                elif [ "$run_conclusion" = "failure" ]; then
+                  echo "✗ 构建失败"
+                  exit 1
+                fi
+              fi
+            done
+          else
+            echo "✓ 构建流程完成，run ID: $run_id"
+            echo "linux_run_id=$run_id" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: 定位最新核心库 Release
         id: release

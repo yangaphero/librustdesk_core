@@ -99,24 +99,22 @@ jobs:
           echo "Finding SDK directory..."
           ls -la "$RUSTDESK_HARMONY_BUILD_DIR"
           
-          # 自动查找包含 native/llvm/bin/clang 的目录
-          CLANG_PATH=$(find "$RUSTDESK_HARMONY_BUILD_DIR" -name "clang" -type f 2>/dev/null | head -1)
-          
-          if [ -n "$CLANG_PATH" ]; then
-            SDK_PATH=$(dirname "$(dirname "$(dirname "$CLANG_PATH")")")
-            echo "Found clang at: $CLANG_PATH"
-            echo "SDK path: $SDK_PATH"
-            mv "$SDK_PATH" "$sdk_root"
+          # 直接使用已知路径结构（主要方法）
+          if [ -f "$RUSTDESK_HARMONY_BUILD_DIR/command-line-tools/sdk/default/openharmony/native/llvm/bin/clang" ] || \
+             [ -L "$RUSTDESK_HARMONY_BUILD_DIR/command-line-tools/sdk/default/openharmony/native/llvm/bin/clang" ]; then
+            mv "$RUSTDESK_HARMONY_BUILD_DIR/command-line-tools/sdk/default" "$sdk_root"
+          elif [ -d "$RUSTDESK_HARMONY_BUILD_DIR/sdk/default/openharmony" ]; then
+            mv "$RUSTDESK_HARMONY_BUILD_DIR/sdk" "$sdk_root"
           else
-            echo "Trying common SDK paths..."
-            ls -la "$RUSTDESK_HARMONY_BUILD_DIR"
+            # 备用：查找包含 native/llvm/bin/clang 的目录
+            echo "Trying fallback SDK detection..."
+            CLANG_PATH=$(find "$RUSTDESK_HARMONY_BUILD_DIR" -name "clang" \( -type f -o -type l \) 2>/dev/null | head -1)
             
-            if [ -d "$RUSTDESK_HARMONY_BUILD_DIR/OpenHarmony" ]; then
-              mv "$RUSTDESK_HARMONY_BUILD_DIR/OpenHarmony" "$sdk_root"
-            elif [ -d "$RUSTDESK_HARMONY_BUILD_DIR/sdk" ]; then
-              mv "$RUSTDESK_HARMONY_BUILD_DIR/sdk" "$sdk_root"
-            elif [ -d "$RUSTDESK_HARMONY_BUILD_DIR/OpenHarmonySDK" ]; then
-              mv "$RUSTDESK_HARMONY_BUILD_DIR/OpenHarmonySDK" "$sdk_root"
+            if [ -n "$CLANG_PATH" ]; then
+              SDK_PATH=$(dirname "$(dirname "$(dirname "$CLANG_PATH")")")
+              echo "Found clang at: $CLANG_PATH"
+              echo "SDK path: $SDK_PATH"
+              mv "$SDK_PATH" "$sdk_root"
             else
               echo "ERROR: Cannot find SDK directory"
               find "$RUSTDESK_HARMONY_BUILD_DIR" -maxdepth 3 -type d | head -20
@@ -176,6 +174,9 @@ jobs:
           export PATH="$VCPKG_ROOT:$PATH"
           export OHOS_SDK_HOME="$RUSTDESK_HARMONY_BUILD_DIR/ohos-sdk"
           export VCPKG_FORCE_SYSTEM_BINARIES=1
+          export PKG_CONFIG_PATH="$VCPKG_INSTALLED_ROOT/$TRIPLET/lib/pkgconfig"
+          export SODIUM_LIB_DIR="$VCPKG_INSTALLED_ROOT/$TRIPLET/lib"
+          export SODIUM_INCLUDE_DIR="$VCPKG_INSTALLED_ROOT/$TRIPLET/include"
           
           echo "=== Starting Build ==="
           echo "Building for target: $TARGET_TRIPLE"
@@ -188,13 +189,25 @@ jobs:
           
           echo "=== Build Completed ==="
 
+      - name: 重命名构建产物
+        run: |
+          ARTIFACT_DIR="$RUSTDESK_HARMONY_BUILD_DIR/native_rust_core/target/${{ matrix.target }}/release"
+          if [ -f "$ARTIFACT_DIR/librustdesk_harmony_bridge.a" ]; then
+            cp "$ARTIFACT_DIR/librustdesk_harmony_bridge.a" "$ARTIFACT_DIR/${{ matrix.release_file }}"
+            echo "Copied librustdesk_harmony_bridge.a -> ${{ matrix.release_file }}"
+          fi
+          ls -lh "$ARTIFACT_DIR"/*.a 2>/dev/null || true
+
       - name: 验证构建产物
         run: |
           echo "=== Checking Build Artifacts ==="
           artifact_dir="$RUSTDESK_HARMONY_BUILD_DIR/native_rust_core/target/${{ matrix.target }}/release"
           echo "Artifact directory: $artifact_dir"
           
-          if [ -f "$artifact_dir/librustdesk_harmony_bridge.a" ]; then
+          if [ -f "$artifact_dir/${{ matrix.release_file }}" ]; then
+            echo "✓ ${{ matrix.release_file }} found"
+            ls -lh "$artifact_dir/${{ matrix.release_file }}"
+          elif [ -f "$artifact_dir/librustdesk_harmony_bridge.a" ]; then
             echo "✓ librustdesk_harmony_bridge.a found"
             ls -lh "$artifact_dir/librustdesk_harmony_bridge.a"
           elif [ -f "$artifact_dir/rustdesk_harmony_bridge.a" ]; then
@@ -210,7 +223,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: ${{ github.workspace }}/_build/native_rust_core/target/${{ matrix.target }}/release/librustdesk_harmony_bridge.a
+          path: ${{ github.workspace }}/_build/native_rust_core/target/${{ matrix.target }}/release/${{ matrix.release_file }}
           retention-days: 7
 
   release:
@@ -248,8 +261,8 @@ jobs:
           gh release create "$tag" \
             --title "HarmonyOS Core $tag" \
             --generate-notes \
-            librustdesk_core_linux_arm64/librustdesk_harmony_bridge.a \
-            librustdesk_core_linux_x86_64/librustdesk_harmony_bridge.a || {
+            librustdesk_core_linux_arm64/${{ matrix.release_file }} \
+            librustdesk_core_linux_x86_64/${{ matrix.release_file }} || {
             echo "Failed to create release"
             exit 1
           }
