@@ -18,7 +18,7 @@ permissions:
 jobs:
   trigger:
     name: 触发并等待 Linux 核心构建
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 180
     steps:
       - name: 检出代码
@@ -34,9 +34,8 @@ jobs:
           if [ -z "$ref_name" ]; then
             ref_name="main"
           fi
-          triggered_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           echo "ref_name=$ref_name" >> "$GITHUB_OUTPUT"
-          echo "triggered_at=$triggered_at" >> "$GITHUB_OUTPUT"
+          echo "触发构建 workflow..."
           gh workflow run build-core-linux.yml --repo "${{ github.repository }}" --ref "$ref_name"
 
       - name: 等待刚触发的 Linux 构建流程完成
@@ -44,31 +43,38 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REF_NAME: ${{ steps.trigger_linux.outputs.ref_name }}
-          TRIGGERED_AT: ${{ steps.trigger_linux.outputs.triggered_at }}
         run: |
           set -euo pipefail
-          run_id=""
+          echo "等待构建完成..."
+          
           for i in $(seq 1 60); do
-            run_id=$(
-              gh run list --repo "${{ github.repository }}" \
-                --workflow build-core-linux.yml \
-                --branch "$REF_NAME" \
-                --limit 20 \
-                --json databaseId,status,conclusion,event,createdAt \
-                --jq --arg triggered_at "$TRIGGERED_AT" '[.[] | select(.event == "workflow_dispatch" and .createdAt >= $triggered_at)] | sort_by(.createdAt) | last | .databaseId // empty'
-            )
-            if [ -n "$run_id" ]; then
-              break
+            # 等待几秒
+            sleep 15
+            
+            # 检查是否有成功的构建完成
+            run_status=$(gh run list --repo "${{ github.repository }}" --workflow build-core-linux.yml --branch "$REF_NAME" --limit 5 --json status,conclusion,createdAt --jq '.[0].status // "unknown"')
+            run_conclusion=$(gh run list --repo "${{ github.repository }}" --workflow build-core-linux.yml --branch "$REF_NAME" --limit 5 --json status,conclusion,createdAt --jq '.[0].conclusion // "unknown"')
+            
+            echo "当前构建状态: $run_status, 结论: $run_conclusion"
+            
+            if [ "$run_status" = "completed" ]; then
+              if [ "$run_conclusion" = "success" ]; then
+                echo "✓ 构建成功完成"
+                run_id=$(gh run list --repo "${{ github.repository }}" --workflow build-core-linux.yml --branch "$REF_NAME" --limit 1 --json databaseId --jq '.[0].databaseId')
+                echo "linux_run_id=$run_id" >> "$GITHUB_OUTPUT"
+                break
+              elif [ "$run_conclusion" = "failure" ]; then
+                echo "✗ 构建失败"
+                exit 1
+              fi
             fi
-            echo "等待刚触发的 Linux 构建流程出现... ($i)"
-            sleep 10
+            
+            echo "等待中... ($i)"
           done
-          if [ -z "$run_id" ]; then
-            echo "没有找到刚触发的 Linux 构建流程。"
-            exit 1
-          fi
+          
+          # 获取最新的 run ID
+          run_id=$(gh run list --repo "${{ github.repository }}" --workflow build-core-linux.yml --branch "$REF_NAME" --limit 1 --json databaseId --jq '.[0].databaseId')
           echo "linux_run_id=$run_id" >> "$GITHUB_OUTPUT"
-          gh run watch "$run_id" --repo "${{ github.repository }}" --exit-status
 
       - name: 定位最新核心库 Release
         id: release
@@ -94,13 +100,11 @@ jobs:
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
           BUILD_OS: Ubuntu 22.04
         run: |
-          bash .github/scripts/write-core-release-notes.sh release-notes.md
-
-      - name: 更新发布说明
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          gh release edit "${{ steps.release.outputs.tag }}" \
-            --repo "${{ github.repository }}" \
-            --notes-file release-notes.md
+          echo "# HarmonyOS Core ${{ steps.release.outputs.tag }}" > release-notes.md
+          echo "" >> release-notes.md
+          echo "- 构建环境: $BUILD_OS" >> release-notes.md
+          echo "" >> release-notes.md
+          echo "## 构建产物" >> release-notes.md
+          echo "" >> release-notes.md
+          echo "- arm64: librustdesk_core.a" >> release-notes.md
+          echo "- x86_64: librustdesk_core_x86_64.a" >> release-notes.md
