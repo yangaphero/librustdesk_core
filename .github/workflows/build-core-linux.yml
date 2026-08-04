@@ -60,7 +60,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             build-essential cmake ninja-build autoconf automake libtool \
             pkg-config perl python3 curl git unzip p7zip-full \
-            libssl-dev tar
+            libssl-dev tar gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
       - name: 准备构建目录
         run: |
@@ -102,6 +102,7 @@ jobs:
           fi
           
           echo "SDK installed to: $sdk_root"
+          ls -la "$sdk_root/native/llvm/bin/" | head -10
 
       - name: 安装 vcpkg
         run: |
@@ -122,6 +123,9 @@ jobs:
           }
           
           VCPKG_BIN="$VCPKG_ROOT/vcpkg"
+          
+          # 使用系统提供的 aarch64 交叉编译器
+          export VCPKG_FORCE_SYSTEM_BINARIES=1
           
           echo "Installing libsodium for $TRIPLET..."
           "$VCPKG_BIN" install libsodium:"$TRIPLET" --triplet="$TRIPLET" || {
@@ -151,6 +155,7 @@ jobs:
           set -euo pipefail
           export PATH="$VCPKG_ROOT:$PATH"
           export OHOS_SDK_HOME="$RUSTDESK_HARMONY_BUILD_DIR/ohos-sdk"
+          export VCPKG_FORCE_SYSTEM_BINARIES=1
           
           echo "=== Starting Build ==="
           echo "Building for target: $TARGET_TRIPLE"
