@@ -48,8 +48,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: 安装 Rust 工具链
-        uses: dtolnay/rust-toolchain@1.88.0
+        uses: dtolnay/rust-toolchain@v1
         with:
+          toolchain: 1.88.0
           targets: ${{ matrix.target }}
 
       - name: 安装系统依赖
@@ -58,11 +59,13 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             build-essential cmake ninja-build autoconf automake libtool \
             pkg-config perl python3 curl git unzip p7zip-full \
-            libssl-dev join
+            libssl-dev join tar
 
       - name: 准备构建目录
         run: |
           mkdir -p "$RUSTDESK_HARMONY_BUILD_DIR" "$VCPKG_ROOT" "$VCPKG_INSTALLED_ROOT"
+          echo "Build directory created"
+          ls -la "$RUSTDESK_HARMONY_BUILD_DIR"
 
       - name: 下载 OHOS SDK
         run: |
@@ -70,49 +73,144 @@ jobs:
           sdk_archive="$RUSTDESK_HARMONY_BUILD_DIR/ohos-sdk.tar.gz"
           sdk_root="$RUSTDESK_HARMONY_BUILD_DIR/ohos-sdk"
           
-          # 下载分卷压缩包
+          echo "Downloading OHOS SDK from $SDK_REPO..."
           cd "$RUSTDESK_HARMONY_BUILD_DIR"
+          
+          # 下载分卷压缩包
           for part in $(seq -w 1 10); do
-            echo "Downloading ohos-sdk part $part..."
-            curl -L -O "https://github.com/$SDK_REPO/releases/download/$SDK_VERSION/ohos-sdk-linux-amd64.tar.gz.$part"
+            echo "Downloading part $part..."
+            curl -L -f -o "ohos-sdk.part.$part" "https://github.com/$SDK_REPO/releases/download/$SDK_VERSION/ohos-sdk-linux-amd64.tar.gz.$part" || {
+              echo "Failed to download part $part"
+              exit 1
+            }
           done
           
           # 合并分卷
-          cat ohos-sdk-linux-amd64.tar.gz.* > "$sdk_archive"
-          rm -f ohos-sdk-linux-amd64.tar.gz.*
+          echo "Merging parts..."
+          cat ohos-sdk.part.* > "$sdk_archive"
+          rm -f ohos-sdk.part.*
           
           # 解压
-          tar -xzf "$sdk_archive" -C "$RUSTDESK_HARMONY_BUILD_DIR"
-          mv "$RUSTDESK_HARMONY_BUILD_DIR/OpenHarmony" "$sdk_root" || true
-          mv "$RUSTDESK_HARMONY_BUILD_DIR/sdk" "$sdk_root" || true
+          echo "Extracting SDK..."
+          tar -xzf "$sdk_archive" -C "$RUSTDESK_HARMONY_BUILD_DIR" || {
+            echo "Failed to extract SDK"
+            exit 1
+          }
+          
+          # 检查解压结果
+          echo "Checking SDK structure..."
+          ls -la "$RUSTDESK_HARMONY_BUILD_DIR"
+          
+          # 找到 SDK 目录
+          if [ -d "$RUSTDESK_HARMONY_BUILD_DIR/OpenHarmony" ]; then
+            mv "$RUSTDESK_HARMONY_BUILD_DIR/OpenHarmony" "$sdk_root"
+          elif [ -d "$RUSTDESK_HARMONY_BUILD_DIR/sdk" ]; then
+            mv "$RUSTDESK_HARMONY_BUILD_DIR/sdk" "$sdk_root"
+          fi
           
           echo "SDK installed to: $sdk_root"
-          ls -la "$sdk_root"
+          ls -la "$sdk_root" 2>/dev/null || true
+          ls -la "$sdk_root/native/llvm/bin/" 2>/dev/null || true
 
-      - name: 安装 vcpkg 和依赖
+      - name: 安装 vcpkg
         run: |
-          git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
-          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+          echo "Cloning vcpkg..."
+          git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT" || {
+            echo "Failed to clone vcpkg"
+            exit 1
+          }
+          
+          echo "Bootstrapping vcpkg..."
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics || {
+            echo "Failed to bootstrap vcpkg"
+            exit 1
+          }
+          
           export PATH="$VCPKG_ROOT:$PATH"
-          ./vcpkg install libsodium:${TRIPLET} --triplet ${TRIPLET}
-          ./vcpkg install opus:${TRIPLET} --triplet ${TRIPLET}
+          
+          echo "Installing libsodium..."
+          ./vcpkg install libsodium:${TRIPLET} --triplet ${TRIPLET} --x-use-system-packages || {
+            echo "Failed to install libsodium, trying without system packages..."
+            ./vcpkg install libsodium:${TRIPLET} --triplet ${TRIPLET}
+          }
+          
+          echo "Installing opus..."
+          ./vcpkg install opus:${TRIPLET} --triplet ${TRIPLET} --x-use-system-packages || {
+            echo "Failed to install opus, trying without system packages..."
+            ./vcpkg install opus:${TRIPLET} --triplet ${TRIPLET}
+          }
+          
+          echo "vcpkg installation completed"
+
+      - name: 显示构建环境
+        run: |
+          echo "=== Build Environment ==="
+          echo "TARGET_TRIPLE: $TARGET_TRIPLE"
+          echo "CLANG_TARGET: $CLANG_TARGET"
+          echo "RUSTDESK_HARMONY_BUILD_DIR: $RUSTDESK_HARMONY_BUILD_DIR"
+          echo "VCPKG_ROOT: $VCPKG_ROOT"
+          echo "OHOS_SDK_HOME: $OHOS_SDK_HOME"
+          echo "========================"
+          echo "Rust version:"
+          rustup --version
+          echo "Cargo version:"
+          cargo --version
+          echo "Clang version:"
+          "$OHOS_SDK_HOME/native/llvm/bin/clang" --version 2>/dev/null || echo "Clang not found"
 
       - name: 构建核心库
         run: |
+          set -euo pipefail
           export PATH="$VCPKG_ROOT:$PATH"
           export OHOS_SDK_HOME="$RUSTDESK_HARMONY_BUILD_DIR/ohos-sdk"
-          bash scripts/build_native_bridge.sh ${{ matrix.target }} release
+          
+          echo "=== Starting Build ==="
+          echo "Building for target: $TARGET_TRIPLE"
+          echo "SDK home: $OHOS_SDK_HOME"
+          
+          # 检查必要工具
+          ls -la "$OHOS_SDK_HOME/native/llvm/bin/" || echo "SDK tools not found"
+          ls -la "$VCPKG_ROOT/vcpkg" || echo "vcpkg not found"
+          
+          # 运行构建脚本
+          bash scripts/build_native_bridge.sh ${{ matrix.target }} release 2>&1 || {
+            echo "Build failed with exit code $?"
+            exit 1
+          }
+          
+          echo "=== Build Completed ==="
+
+      - name: 验证构建产物
+        run: |
+          echo "=== Checking Build Artifacts ==="
+          artifact_dir="$RUSTDESK_HARMONY_BUILD_DIR/native_rust_core/target/${{ matrix.target }}/release"
+          echo "Artifact directory: $artifact_dir"
+          ls -la "$artifact_dir" || echo "Artifact directory not found"
+          
+          if [ -f "$artifact_dir/librustdesk_harmony_bridge.a" ]; then
+            echo "✓ librustdesk_harmony_bridge.a found"
+            ls -lh "$artifact_dir/librustdesk_harmony_bridge.a"
+          elif [ -f "$artifact_dir/rustdesk_harmony_bridge.a" ]; then
+            echo "✓ rustdesk_harmony_bridge.a found"
+            ls -lh "$artifact_dir/rustdesk_harmony_bridge.a"
+          else
+            echo "✗ No static library found!"
+            find "$artifact_dir" -name "*.a" -o -name "*.lib" 2>/dev/null | head -10
+            exit 1
+          fi
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
           path: ${{ github.workspace }}/_build/native_rust_core/target/${{ matrix.target }}/release/librustdesk_harmony_bridge.a
+          retention-days: 7
 
   release:
     name: 创建 Release
     needs: build
     runs-on: ubuntu-22.04
+    if: success()
     steps:
       - name: 下载所有产物
         uses: actions/download-artifact@v4
@@ -122,6 +220,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          
           # 生成版本号
           existing_numbers=$(
             gh api repos/${{ github.repository }}/git/matching-refs/tags/core- --paginate --jq '.[].ref' \
@@ -138,9 +237,17 @@ jobs:
           fi
           tag="core-$(printf '%03d' $next)"
           
+          echo "Creating release: $tag"
+          
           # 创建 Release
           gh release create "$tag" \
             --title "HarmonyOS Core $tag" \
             --generate-notes \
-            librustdesk_core_linux_arm64/librustdesk_core.a \
-            librustdesk_core_linux_x86_64/librustdesk_core.a
+            librustdesk_core_linux_arm64/librustdesk_harmony_bridge.a \
+            librustdesk_core_linux_x86_64/librustdesk_harmony_bridge.a || {
+            echo "Failed to create release"
+            exit 1
+          }
+          
+          echo "Release created: $tag"
+          echo "tag=$tag" >> $GITHUB_OUTPUT
