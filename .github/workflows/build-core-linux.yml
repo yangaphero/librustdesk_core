@@ -95,23 +95,22 @@ jobs:
           }
           rm -f "$sdk_archive"
           
-          # 查找 SDK 根目录：找包含 native/llvm/bin/clang 和 native/sysroot 的目录
+          # 查找 SDK 根目录（包含 native/llvm/bin/clang 和 native/sysroot 的目录）
           echo "Finding SDK root directory..."
           SDK_CANDIDATE=""
           
-          # 方法1：直接检查已知路径
+          # 方法1：直接检查已知路径（OHOS SDK Linux 版的标准结构）
           if [ -f "$RUSTDESK_HARMONY_BUILD_DIR/command-line-tools/sdk/default/openharmony/native/llvm/bin/clang" ] && \
              [ -d "$RUSTDESK_HARMONY_BUILD_DIR/command-line-tools/sdk/default/openharmony/native/sysroot" ]; then
             SDK_CANDIDATE="$RUSTDESK_HARMONY_BUILD_DIR/command-line-tools/sdk/default/openharmony"
-            echo "Found SDK at: $SDK_CANDIDATE"
+            echo "Found SDK at standard path: $SDK_CANDIDATE"
           elif [ -d "$RUSTDESK_HARMONY_BUILD_DIR/openharmony/native/llvm/bin" ] && \
                [ -d "$RUSTDESK_HARMONY_BUILD_DIR/openharmony/native/sysroot" ]; then
             SDK_CANDIDATE="$RUSTDESK_HARMONY_BUILD_DIR/openharmony"
-            echo "Found SDK at: $SDK_CANDIDATE"
+            echo "Found SDK at direct path: $SDK_CANDIDATE"
           else
-            # 方法2：使用 find 查找
+            # 方法2：使用 find 查找（兼容非标准结构）
             echo "Using find to locate SDK..."
-            # 找包含 native/llvm/bin/clang 的目录
             SDK_CANDIDATE=$(find "$RUSTDESK_HARMONY_BUILD_DIR" -type d -name "openharmony" 2>/dev/null | while read dir; do
               if [ -f "$dir/native/llvm/bin/clang" ] || [ -L "$dir/native/llvm/bin/clang" ]; then
                 if [ -d "$dir/native/sysroot" ]; then
@@ -125,6 +124,9 @@ jobs:
           
           if [ -z "$SDK_CANDIDATE" ]; then
             echo "ERROR: Cannot find SDK root directory"
+            echo "Searching for clang..."
+            find "$RUSTDESK_HARMONY_BUILD_DIR" -name "clang" 2>/dev/null | head -5
+            echo "Directory structure:"
             find "$RUSTDESK_HARMONY_BUILD_DIR" -maxdepth 4 -type d | head -30
             exit 1
           fi
@@ -134,8 +136,20 @@ jobs:
           mv "$SDK_CANDIDATE" "$sdk_root"
           
           echo "SDK installed to: $sdk_root"
+          echo "Verifying SDK structure..."
           ls -la "$sdk_root/native/llvm/bin/" | head -10
           ls -la "$sdk_root/native/sysroot/" | head -5
+          
+          # 验证必要条件
+          if [ ! -x "$sdk_root/native/llvm/bin/clang" ] && [ ! -L "$sdk_root/native/llvm/bin/clang" ]; then
+            echo "ERROR: clang not found or not executable at $sdk_root/native/llvm/bin/clang"
+            exit 1
+          fi
+          if [ ! -d "$sdk_root/native/sysroot" ]; then
+            echo "ERROR: sysroot not found at $sdk_root/native/sysroot"
+            exit 1
+          fi
+          echo "✓ SDK verification passed"
 
       - name: 安装 vcpkg
         run: |
