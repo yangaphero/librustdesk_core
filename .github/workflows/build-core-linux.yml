@@ -97,18 +97,20 @@ jobs:
           
           # 查找 SDK 实际目录
           echo "Finding SDK directory..."
-          find "$RUSTDESK_HARMONY_BUILD_DIR" -maxdepth 3 -name "llvm" -type d | head -5
+          ls -la "$RUSTDESK_HARMONY_BUILD_DIR"
           
-          # 自动查找包含 native/llvm/bin 的目录
-          SDK_PATH=$(find "$RUSTDESK_HARMONY_BUILD_DIR" -name "clang" -type f | head -1 | xargs dirname | xargs dirname | xargs dirname 2>/dev/null)
+          # 自动查找包含 native/llvm/bin/clang 的目录
+          CLANG_PATH=$(find "$RUSTDESK_HARMONY_BUILD_DIR" -name "clang" -type f 2>/dev/null | head -1)
           
-          if [ -n "$SDK_PATH" ] && [ -d "$SDK_PATH" ]; then
-            echo "Found SDK at: $SDK_PATH"
+          if [ -n "$CLANG_PATH" ]; then
+            SDK_PATH=$(dirname "$(dirname "$(dirname "$CLANG_PATH")")")
+            echo "Found clang at: $CLANG_PATH"
+            echo "SDK path: $SDK_PATH"
             mv "$SDK_PATH" "$sdk_root"
           else
-            echo "Trying to find SDK in extracted contents..."
+            echo "Trying common SDK paths..."
             ls -la "$RUSTDESK_HARMONY_BUILD_DIR"
-            # 尝试常见路径
+            
             if [ -d "$RUSTDESK_HARMONY_BUILD_DIR/OpenHarmony" ]; then
               mv "$RUSTDESK_HARMONY_BUILD_DIR/OpenHarmony" "$sdk_root"
             elif [ -d "$RUSTDESK_HARMONY_BUILD_DIR/sdk" ]; then
