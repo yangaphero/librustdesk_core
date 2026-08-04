@@ -95,35 +95,47 @@ jobs:
           }
           rm -f "$sdk_archive"
           
-          # 查找 SDK 实际目录
-          echo "Finding SDK directory..."
-          ls -la "$RUSTDESK_HARMONY_BUILD_DIR"
+          # 查找 SDK 根目录：找包含 native/llvm/bin/clang 和 native/sysroot 的目录
+          echo "Finding SDK root directory..."
+          SDK_CANDIDATE=""
           
-          # 直接使用已知路径结构（主要方法）
-          if [ -f "$RUSTDESK_HARMONY_BUILD_DIR/command-line-tools/sdk/default/openharmony/native/llvm/bin/clang" ] || \
-             [ -L "$RUSTDESK_HARMONY_BUILD_DIR/command-line-tools/sdk/default/openharmony/native/llvm/bin/clang" ]; then
-            mv "$RUSTDESK_HARMONY_BUILD_DIR/command-line-tools/sdk/default" "$sdk_root"
-          elif [ -d "$RUSTDESK_HARMONY_BUILD_DIR/sdk/default/openharmony" ]; then
-            mv "$RUSTDESK_HARMONY_BUILD_DIR/sdk" "$sdk_root"
+          # 方法1：直接检查已知路径
+          if [ -f "$RUSTDESK_HARMONY_BUILD_DIR/command-line-tools/sdk/default/openharmony/native/llvm/bin/clang" ] && \
+             [ -d "$RUSTDESK_HARMONY_BUILD_DIR/command-line-tools/sdk/default/openharmony/native/sysroot" ]; then
+            SDK_CANDIDATE="$RUSTDESK_HARMONY_BUILD_DIR/command-line-tools/sdk/default/openharmony"
+            echo "Found SDK at: $SDK_CANDIDATE"
+          elif [ -d "$RUSTDESK_HARMONY_BUILD_DIR/openharmony/native/llvm/bin" ] && \
+               [ -d "$RUSTDESK_HARMONY_BUILD_DIR/openharmony/native/sysroot" ]; then
+            SDK_CANDIDATE="$RUSTDESK_HARMONY_BUILD_DIR/openharmony"
+            echo "Found SDK at: $SDK_CANDIDATE"
           else
-            # 备用：查找包含 native/llvm/bin/clang 的目录
-            echo "Trying fallback SDK detection..."
-            CLANG_PATH=$(find "$RUSTDESK_HARMONY_BUILD_DIR" -name "clang" \( -type f -o -type l \) 2>/dev/null | head -1)
-            
-            if [ -n "$CLANG_PATH" ]; then
-              SDK_PATH=$(dirname "$(dirname "$(dirname "$CLANG_PATH")")")
-              echo "Found clang at: $CLANG_PATH"
-              echo "SDK path: $SDK_PATH"
-              mv "$SDK_PATH" "$sdk_root"
-            else
-              echo "ERROR: Cannot find SDK directory"
-              find "$RUSTDESK_HARMONY_BUILD_DIR" -maxdepth 3 -type d | head -20
-              exit 1
-            fi
+            # 方法2：使用 find 查找
+            echo "Using find to locate SDK..."
+            # 找包含 native/llvm/bin/clang 的目录
+            SDK_CANDIDATE=$(find "$RUSTDESK_HARMONY_BUILD_DIR" -type d -name "openharmony" 2>/dev/null | while read dir; do
+              if [ -f "$dir/native/llvm/bin/clang" ] || [ -L "$dir/native/llvm/bin/clang" ]; then
+                if [ -d "$dir/native/sysroot" ]; then
+                  echo "$dir"
+                  break
+                fi
+              fi
+            done)
+            echo "Found SDK at: $SDK_CANDIDATE"
           fi
+          
+          if [ -z "$SDK_CANDIDATE" ]; then
+            echo "ERROR: Cannot find SDK root directory"
+            find "$RUSTDESK_HARMONY_BUILD_DIR" -maxdepth 4 -type d | head -30
+            exit 1
+          fi
+          
+          # 移动到标准位置
+          mkdir -p "$(dirname "$sdk_root")"
+          mv "$SDK_CANDIDATE" "$sdk_root"
           
           echo "SDK installed to: $sdk_root"
           ls -la "$sdk_root/native/llvm/bin/" | head -10
+          ls -la "$sdk_root/native/sysroot/" | head -5
 
       - name: 安装 vcpkg
         run: |
@@ -181,6 +193,8 @@ jobs:
           echo "=== Starting Build ==="
           echo "Building for target: $TARGET_TRIPLE"
           echo "Triplet: $TRIPLET"
+          echo "SDK home: $OHOS_SDK_HOME"
+          echo "Vcpkg root: $VCPKG_ROOT"
           
           bash scripts/build_native_bridge.sh "$TARGET_TRIPLE" release 2>&1 || {
             echo "Build failed with exit code $?"
@@ -189,30 +203,24 @@ jobs:
           
           echo "=== Build Completed ==="
 
-      - name: 重命名构建产物
-        run: |
-          ARTIFACT_DIR="$RUSTDESK_HARMONY_BUILD_DIR/native_rust_core/target/${{ matrix.target }}/release"
-          if [ -f "$ARTIFACT_DIR/librustdesk_harmony_bridge.a" ]; then
-            cp "$ARTIFACT_DIR/librustdesk_harmony_bridge.a" "$ARTIFACT_DIR/${{ matrix.release_file }}"
-            echo "Copied librustdesk_harmony_bridge.a -> ${{ matrix.release_file }}"
-          fi
-          ls -lh "$ARTIFACT_DIR"/*.a 2>/dev/null || true
-
       - name: 验证构建产物
         run: |
           echo "=== Checking Build Artifacts ==="
           artifact_dir="$RUSTDESK_HARMONY_BUILD_DIR/native_rust_core/target/${{ matrix.target }}/release"
           echo "Artifact directory: $artifact_dir"
+          ls -la "$artifact_dir" 2>/dev/null || echo "Artifact directory not found"
           
           if [ -f "$artifact_dir/${{ matrix.release_file }}" ]; then
             echo "✓ ${{ matrix.release_file }} found"
             ls -lh "$artifact_dir/${{ matrix.release_file }}"
           elif [ -f "$artifact_dir/librustdesk_harmony_bridge.a" ]; then
-            echo "✓ librustdesk_harmony_bridge.a found"
-            ls -lh "$artifact_dir/librustdesk_harmony_bridge.a"
+            echo "✓ librustdesk_harmony_bridge.a found (copying to ${{ matrix.release_file }})"
+            cp "$artifact_dir/librustdesk_harmony_bridge.a" "$artifact_dir/${{ matrix.release_file }}"
+            ls -lh "$artifact_dir/${{ matrix.release_file }}"
           elif [ -f "$artifact_dir/rustdesk_harmony_bridge.a" ]; then
-            echo "✓ rustdesk_harmony_bridge.a found"
-            ls -lh "$artifact_dir/rustdesk_harmony_bridge.a"
+            echo "✓ rustdesk_harmony_bridge.a found (copying to ${{ matrix.release_file }})"
+            cp "$artifact_dir/rustdesk_harmony_bridge.a" "$artifact_dir/${{ matrix.release_file }}"
+            ls -lh "$artifact_dir/${{ matrix.release_file }}"
           else
             echo "✗ No static library found!"
             find "$artifact_dir" -name "*.a" 2>/dev/null | head -10
@@ -258,11 +266,15 @@ jobs:
           
           echo "Creating release: $tag"
           
+          # 检查产物是否存在
+          ls -la librustdesk_core_linux_arm64/ 2>/dev/null || true
+          ls -la librustdesk_core_linux_x86_64/ 2>/dev/null || true
+          
           gh release create "$tag" \
             --title "HarmonyOS Core $tag" \
             --generate-notes \
-            librustdesk_core_linux_arm64/${{ matrix.release_file }} \
-            librustdesk_core_linux_x86_64/${{ matrix.release_file }} || {
+            librustdesk_core_linux_arm64/librustdesk_core.a \
+            librustdesk_core_linux_x86_64/librustdesk_core_x86_64.a || {
             echo "Failed to create release"
             exit 1
           }
