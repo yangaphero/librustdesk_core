@@ -30,9 +30,9 @@ pub const crypto_secretbox_MACBYTES: usize = 16;
 
 extern "C" {
     pub fn crypto_secretbox_easy(c: *mut libc::c_uchar, m: *const libc::c_uchar, mlen: usize, n: *const libc::c_uchar, k: *const libc::c_uchar) -> libc::c_int;
-    pub fn crypto_secretbox_open_easy(m: *mut libc::c_uchar, c: *const libc::c_uchar, clen: usize, n: *const libc::c_uchar, k: *const libc::c_uchar) -> libc::c_int;
+    pub fn crypto_secretbox_open_easy(m: *mut libc::c_uchar, c: *const libc::c_uchar, clen: usize, nonce: *const libc::c_uchar, k: *const libc::c_uchar) -> libc::c_int;
     pub fn crypto_secretbox_detached(c: *mut libc::c_uchar, mac: *mut libc::c_uchar, m: *const libc::c_uchar, mlen: usize, n: *const libc::c_uchar, k: *const libc::c_uchar) -> libc::c_int;
-    pub fn crypto_secretbox_open_detached(m: *mut libc::c_uchar, c: *const libc::c_uchar, mac: *const libc::c_uchar, clen: usize, n: *const libc::c_uchar, k: *const libc::c_uchar) -> libc::c_int;
+    pub fn crypto_secretbox_open_detached(m: *mut libc::c_uchar, c: *const libc::c_uchar, mac: *const libc::c_uchar, clen: usize, nonce: *const libc::c_uchar, k: *const libc::c_uchar) -> libc::c_int;
 }
 
 // Box (public-key authenticated encryption)
@@ -48,7 +48,7 @@ extern "C" {
     pub fn crypto_box_seal_open(m: *mut libc::c_uchar, c: *const libc::c_uchar, clen: usize, pk: *const libc::c_uchar, sk: *const libc::c_uchar) -> libc::c_int;
     pub fn crypto_box_beforenm(k: *mut libc::c_uchar, pk: *const libc::c_uchar, sk: *const libc::c_uchar) -> libc::c_int;
     pub fn crypto_box_afternm(c: *mut libc::c_uchar, m: *const libc::c_uchar, mlen: usize, n: *const libc::c_uchar, k: *const libc::c_uchar) -> libc::c_int;
-    pub fn crypto_box_open_afternm(m: *mut libc::c_uchar, c: *const libc::c_uchar, clen: usize, n: *const libc::c_uchar, k: *const libc::c_uchar) -> libc::c_int;
+    pub fn crypto_box_open_afternm(m: *mut libc::c_uchar, c: *const libc::c_uchar, clen: usize, nonce: *const libc::c_uchar, k: *const libc::c_uchar) -> libc::c_int;
 }
 
 // Sign (digital signatures)
@@ -104,8 +104,8 @@ pub const crypto_stream_KEYBYTES: usize = 32;
 pub const crypto_stream_NONCEBYTES: usize = 24;
 
 extern "C" {
-    pub fn crypto_stream(c: *mut libc::c_uchar, n: usize, n_ nonce: *const libc::c_uchar, k: *const libc::c_uchar) -> libc::c_int;
-    pub fn crypto_stream_xor(c: *mut libc::c_uchar, m: *const libc::c_uchar, n: usize, n_ nonce: *const libc::c_uchar, k: *const libc::c_uchar) -> libc::c_int;
+    pub fn crypto_stream(c: *mut libc::c_uchar, n: usize, nonce: *const libc::c_uchar, k: *const libc::c_uchar) -> libc::c_int;
+    pub fn crypto_stream_xor(c: *mut libc::c_uchar, m: *const libc::c_uchar, n: usize, nonce: *const libc::c_uchar, k: *const libc::c_uchar) -> libc::c_int;
 }
 
 // Pwhash (password hashing)
