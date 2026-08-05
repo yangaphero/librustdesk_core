@@ -1,4 +1,10 @@
 #! /bin/sh
+# OHOS compatibility patch for librustdesk_core
+case "$1" in
+  *-linux-ohos)
+    set -- "${1%-linux-ohos}-linux-gnu"
+    ;;
+esac
 # Configuration validation subroutine script.
 #   Copyright 1992-2020 Free Software Foundation, Inc.
 
