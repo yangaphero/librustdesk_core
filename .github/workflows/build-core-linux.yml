@@ -142,18 +142,36 @@ jobs:
 
       - name: 构建核心库
         run: |
-          set -euo pipefail
+          set -exuo pipefail
           export PATH="$VCPKG_ROOT:$PATH"
           export OHOS_SDK_HOME="$RUSTDESK_HARMONY_BUILD_DIR/ohos-sdk"
           export VCPKG_FORCE_SYSTEM_BINARIES=1
           export PKG_CONFIG_PATH="$VCPKG_INSTALLED_ROOT/$TRIPLET/lib/pkgconfig"
 
+          echo "=== Build Environment ==="
+          echo "TARGET_TRIPLE: $TARGET_TRIPLE"
+          echo "OHOS_SDK_HOME: $OHOS_SDK_HOME"
+          echo "VCPKG_ROOT: $VCPKG_ROOT"
+          echo "CARGO_TARGET_DIR: $CARGO_TARGET_DIR"
+          echo "SODIUM_LIB_DIR: ${SODIUM_LIB_DIR:-<not set>}"
+          echo "========================="
+          
+          # 检查 SDK 是否存在
+          if [ -f "$OHOS_SDK_HOME/native/llvm/bin/clang" ]; then
+            echo "SDK clang found: $OHOS_SDK_HOME/native/llvm/bin/clang"
+          else
+            echo "ERROR: SDK clang not found at $OHOS_SDK_HOME"
+            ls -la "$OHOS_SDK_HOME/" 2>/dev/null || echo "SDK directory not found"
+            find "$RUSTDESK_HARMONY_BUILD_DIR" -name "clang" -type f 2>/dev/null | head -5
+            exit 1
+          fi
+
           echo "=== Starting Build ==="
           echo "Building for target: $TARGET_TRIPLE"
-          echo "SDK home: $OHOS_SDK_HOME"
-
+          
           bash scripts/build_native_bridge.sh "$TARGET_TRIPLE" release 2>&1 || {
             echo "Build failed with exit code $?"
+            echo "=== Build Output Above ==="
             exit 1
           }
 
