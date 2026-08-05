@@ -87,7 +87,7 @@ else
   echo "WARNING: Precompiled libsodium not found at $TARGET_SODIUM_LIB_DIR"
   echo "Will attempt to build from source..."
 fi
-unset SODIUM_LIB_DIR || true
+# 注意：不清除 SODIUM_LIB_DIR，让 cargo build 能访问到
 
 # 清除旧的 libsodium-sys 构建缓存
 rm -rf "$CARGO_TARGET_DIR/release/build"/libsodium-sys-* "$CARGO_TARGET_DIR/$TARGET_TRIPLE/$PROFILE/build"/libsodium-sys-* 2>/dev/null || true
