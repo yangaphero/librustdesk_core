@@ -140,6 +140,14 @@ jobs:
           echo "VCPKG_ROOT: $VCPKG_ROOT"
           echo "========================"
 
+      - name: 清除旧的构建缓存
+        run: |
+          echo "Clearing old build cache..."
+          rm -rf "$CARGO_TARGET_DIR/release/build/libsodium-sys-*"
+          rm -rf "$CARGO_TARGET_DIR/$TARGET_TRIPLE/release/build/libsodium-sys-*"
+          rm -rf "$HOME/.cargo/registry/cache/libsodium-sys-*"
+          echo "Cache cleared"
+
       - name: 构建核心库
         run: |
           set -exuo pipefail
@@ -173,6 +181,11 @@ jobs:
           ls -la "$LIBSODIUM_SRC/build-aux/" 2>/dev/null || echo "build-aux directory not found"
           test -f "$LIBSODIUM_SRC/configure" && echo "configure script exists" || echo "ERROR: configure script missing"
           test -f "$LIBSODIUM_SRC/build-aux/install-sh" && echo "install-sh exists" || echo "ERROR: install-sh missing"
+          
+          # 验证 build.rs 中的 make_arg 设置
+          echo "=== Verifying build.rs make_arg setting ==="
+          BUILD_RS="$GITHUB_WORKSPACE/patches/libsodium-sys/0.2.7/build.rs"
+          grep -n "let make_arg" "$BUILD_RS" || echo "ERROR: make_arg not found in build.rs"
           
           echo "=== Starting Build ==="
           echo "Building for target: $TARGET_TRIPLE"
