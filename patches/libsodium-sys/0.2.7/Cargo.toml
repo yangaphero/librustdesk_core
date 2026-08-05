@@ -22,7 +22,6 @@ version = "0.3"
 [build-dependencies.walkdir]
 version = "2"
 
-
 [features]
 use-pkg-config = []
 [target."cfg(not(target_env = \"msvc\"))".build-dependencies.cc]

@@ -6,7 +6,6 @@ extern crate libc;
 
 extern crate pkg_config;
 extern crate walkdir;
-
 use std::{
     env,
     fs,
@@ -261,10 +260,9 @@ fn make_libsodium(target: &str, source_dir: &Path, install_dir: &Path) -> PathBu
         );
     }
 
-    // Run `make all` - skip tests for OHOS cross-compilation
-    // Tests require local headers (quirks.h) that are not available in cross-compile environment
+    // Run `make check`, or `make all` if we're cross-compiling
     let j_arg = format!("-j{}", env::var("NUM_JOBS").unwrap());
-    let make_arg = "all";
+    let make_arg = if cross_compiling { "all" } else { "check" };
     let mut make_cmd = Command::new("make");
     let make_status = make_cmd
         .current_dir(&source_dir)
@@ -447,9 +445,6 @@ fn build_libsodium() {
     patch_config_sub(&source_dir);
 
     let lib_dir = make_libsodium(&target, &source_dir, &install_dir);
-
-    // Note: FFI bindings are pre-generated in src/lib.rs
-    // The build.rs only handles compilation and linking
 
     if target.contains("msvc") {
         println!("cargo:rustc-link-lib=static=libsodium");
