@@ -6,6 +6,9 @@ extern crate libc;
 
 extern crate pkg_config;
 extern crate walkdir;
+
+#[cfg(not(target_env = "msvc"))]
+extern crate bindgen;
 use std::{
     env,
     fs,
@@ -446,6 +449,24 @@ fn build_libsodium() {
     patch_config_sub(&source_dir);
 
     let lib_dir = make_libsodium(&target, &source_dir, &install_dir);
+
+    // Generate FFI bindings using bindgen
+    #[cfg(not(target_env = "msvc"))]
+    {
+        let bindings = bindgen::Builder::default()
+            .header(format!("{}/src/libsodium/include/sodium.h", source_dir.display()))
+            .clang_arg(format!("-I{}/src/libsodium/include", source_dir.display()))
+            .clang_arg(format!("-I{}/src/libsodium/include/sodium", source_dir.display()))
+            .clang_arg(format!("--sysroot={}", SYSROOT))
+            .rustfmt_bindings(true)
+            .generate()
+            .expect("Unable to generate bindings");
+        
+        let out_path = PathBuf::from(env::var("OUT_DIR").unwrap()).join("bindings.rs");
+        bindings.write_to_file(&out_path).expect("Couldn't write bindings!");
+        
+        println!("cargo:rustc-cfg=libsodium_sys_generated");
+    }
 
     if target.contains("msvc") {
         println!("cargo:rustc-link-lib=static=libsodium");

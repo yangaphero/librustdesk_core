@@ -22,6 +22,10 @@ version = "0.3"
 [build-dependencies.walkdir]
 version = "2"
 
+[build-dependencies.bindgen]
+version = "0.59"
+default-features = false
+
 [features]
 use-pkg-config = []
 [target."cfg(not(target_env = \"msvc\"))".build-dependencies.cc]
