@@ -169,9 +169,14 @@ jobs:
           echo "=== Starting Build ==="
           echo "Building for target: $TARGET_TRIPLE"
           
-          bash scripts/build_native_bridge.sh "$TARGET_TRIPLE" release 2>&1 || {
-            echo "Build failed with exit code $?"
-            echo "=== Build Output Above ==="
+          # 运行构建并捕获输出
+          BUILD_LOG=$(mktemp)
+          bash scripts/build_native_bridge.sh "$TARGET_TRIPLE" release 2>&1 | tee "$BUILD_LOG" || {
+            echo "Build failed with exit code ${PIPESTATUS[0]}"
+            echo "=== Last 50 lines of build output ==="
+            tail -50 "$BUILD_LOG"
+            echo "=== Checking for specific errors ==="
+            grep -i "error\|panic\|failed" "$BUILD_LOG" | tail -30
             exit 1
           }
 
