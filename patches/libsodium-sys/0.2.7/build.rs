@@ -216,6 +216,8 @@ fn make_libsodium(target: &str, source_dir: &Path, install_dir: &Path) -> PathBu
             _ => panic!("Unknown iOS build target: {}", target),
         }
         cross_compiling = true;
+    } else if target.contains("-linux-ohos") {
+        cross_compiling = true;
     } else if target.contains("i686") {
         compiler += " -m32 -maes";
         cflags += " -march=i686";
