@@ -38,6 +38,7 @@ jobs:
       TRIPLET: ${{ matrix.triplet }}
       RUST_TOOLCHAIN_VERSION: "1.88.0"
       RUSTDESK_HARMONY_BUILD_DIR: ${{ github.workspace }}/_build
+      BUILD_ROOT: ${{ github.workspace }}/_build
       CARGO_TARGET_DIR: ${{ github.workspace }}/_build/native_rust_core/target
       VCPKG_ROOT: ${{ github.workspace }}/_build/vcpkg
       VCPKG_INSTALLED_ROOT: ${{ github.workspace }}/_build/vcpkg/installed
@@ -136,6 +137,7 @@ jobs:
       - name: 预编译 libsodium for OHOS
         run: |
           set -euo pipefail
+          export BUILD_ROOT="$RUSTDESK_HARMONY_BUILD_DIR"
           export OHOS_SDK_HOME="$RUSTDESK_HARMONY_BUILD_DIR/ohos-sdk"
           export PATH="$VCPKG_ROOT:$PATH"
           
@@ -143,12 +145,12 @@ jobs:
           VCPKG_SODIUM_LIB="$VCPKG_INSTALLED_ROOT/$TRIPLET/lib/libsodium.a"
           if [ -f "$VCPKG_SODIUM_LIB" ]; then
             echo "Using vcpkg libsodium: $VCPKG_SODIUM_LIB"
-            mkdir -p "$BUILD_ROOT/build/libsodium/$TARGET_TRIPLE/lib"
-            cp "$VCPKG_SODIUM_LIB" "$BUILD_ROOT/build/libsodium/$TARGET_TRIPLE/lib/libsodium.a"
+            mkdir -p "$RUSTDESK_HARMONY_BUILD_DIR/build/libsodium/$TARGET_TRIPLE/lib"
+            cp "$VCPKG_SODIUM_LIB" "$RUSTDESK_HARMONY_BUILD_DIR/build/libsodium/$TARGET_TRIPLE/lib/libsodium.a"
             # 复制头文件
-            mkdir -p "$BUILD_ROOT/build/libsodium/$TARGET_TRIPLE/include/sodium"
-            cp -r "$VCPKG_INSTALLED_ROOT/$TRIPLET/include/sodium/"* "$BUILD_ROOT/build/libsodium/$TARGET_TRIPLE/include/sodium/" 2>/dev/null || true
-            echo "Precompiled libsodium ready at: $BUILD_ROOT/build/libsodium/$TARGET_TRIPLE/lib/libsodium.a"
+            mkdir -p "$RUSTDESK_HARMONY_BUILD_DIR/build/libsodium/$TARGET_TRIPLE/include/sodium"
+            cp -r "$VCPKG_INSTALLED_ROOT/$TRIPLET/include/sodium/"* "$RUSTDESK_HARMONY_BUILD_DIR/build/libsodium/$TARGET_TRIPLE/include/sodium/" 2>/dev/null || true
+            echo "Precompiled libsodium ready at: $RUSTDESK_HARMONY_BUILD_DIR/build/libsodium/$TARGET_TRIPLE/lib/libsodium.a"
           else
             echo "WARNING: vcpkg libsodium not found, will attempt source build"
           fi
@@ -174,7 +176,7 @@ jobs:
           export SODIUM_INCLUDE_DIR="$VCPKG_INSTALLED_ROOT/$TRIPLET/include"
           
           # 设置预编译 libsodium 路径
-          PREBUILT_SODIUM_LIB="$BUILD_ROOT/build/libsodium/$TARGET_TRIPLE/lib"
+          PREBUILT_SODIUM_LIB="$RUSTDESK_HARMONY_BUILD_DIR/build/libsodium/$TARGET_TRIPLE/lib"
           if [ -d "$PREBUILT_SODIUM_LIB" ] && [ -f "$PREBUILT_SODIUM_LIB/libsodium.a" ]; then
             export SODIUM_LIB_DIR="$PREBUILT_SODIUM_LIB"
             echo "Using prebuilt libsodium: $SODIUM_LIB_DIR"
