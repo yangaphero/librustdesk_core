@@ -264,7 +264,7 @@ fn make_libsodium(target: &str, source_dir: &Path, install_dir: &Path) -> PathBu
 
     // Run `make check`, or `make all` if we're cross-compiling
     let j_arg = format!("-j{}", env::var("NUM_JOBS").unwrap());
-    let make_arg = if cross_compiling { "all" } else { "check" };
+    let make_arg = if cross_compiling || target.contains("-linux-ohos") { "all" } else { "check" };
     let mut make_cmd = Command::new("make");
     let make_status = make_cmd
         .current_dir(&source_dir)
