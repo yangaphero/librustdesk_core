@@ -6,11 +6,6 @@
 
 extern crate libc;
 
-// Version
-pub fn sodium_version_string() -> *const libc::c_char {
-    unsafe { sodiumoxide_sys_bindings::sodium_version_string() }
-}
-
 // Include generated bindings
 #[path = "bindings.rs"]
 mod bindings;
