@@ -115,13 +115,19 @@ jobs:
       - name: 准备构建目录
         run: |
           mkdir -p "$RUSTDESK_HARMONY_BUILD_DIR" "$VCPKG_ROOT" "$VCPKG_INSTALLED_ROOT"
+      - name: 释放磁盘空间
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.pulumi 2>/dev/null || true
+          sudo docker rmi $(docker images -q) 2>/dev/null || true
+          sudo apt-get clean 2>/dev/null || true
+          df -h /
+
       - name: 下载 HarmonyOS SDK (公共源)
         env:
           SDK_VERSION: 6.1.1.280
           SDK_REPO: ErBWs/ohos-sdk
         run: |
           set -euo pipefail
-          sdk_archive="$RUSTDESK_HARMONY_BUILD_DIR/ohos-sdk.tar.gz"
           sdk_root="$RUSTDESK_HARMONY_BUILD_DIR/ohos-sdk"
           rm -rf "$sdk_root"
           mkdir -p "$sdk_root"
@@ -132,9 +138,9 @@ jobs:
               "https://github.com/$SDK_REPO/releases/download/$SDK_VERSION/ohos-sdk-linux-amd64.tar.gz.$part"
           done
 
-          cat ohos-sdk.aa ohos-sdk.ab > "$sdk_archive"
-          tar xzf "$sdk_archive" -C "$sdk_root"
-          rm -f ohos-sdk.aa ohos-sdk.ab "$sdk_archive"
+          # 管道流式解压：不创建中间归档文件，节省 2GB 磁盘
+          cat ohos-sdk.aa ohos-sdk.ab | tar xzf - -C "$sdk_root"
+          rm -f ohos-sdk.aa ohos-sdk.ab
 
           clang=$(find "$sdk_root" -name clang -type f | grep -E 'native/llvm/bin/clang$' | head -1)
           if [ -z "$clang" ]; then
