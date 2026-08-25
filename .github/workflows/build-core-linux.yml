@@ -122,63 +122,30 @@ jobs:
           sudo apt-get clean 2>/dev/null || true
           df -h /
 
-      - name: 下载 HarmonyOS SDK (公共源)
-        env:
-          SDK_VERSION: 6.1.1.280
-          SDK_REPO: ErBWs/ohos-sdk
+      - name: 下载 HarmonyOS Native SDK
         run: |
           set -euo pipefail
-          sdk_root="$RUSTDESK_HARMONY_BUILD_DIR/ohos-sdk"
+          sdk_root="$RUSTDESK_HARMONY_BUILD_DIR/ohos-native-sdk"
           rm -rf "$sdk_root"
           mkdir -p "$sdk_root"
 
-          cd "$RUSTDESK_HARMONY_BUILD_DIR"
-          for part in aa ab; do
-            curl -L -f --retry 3 -o "ohos-sdk.$part" \
-              "https://github.com/$SDK_REPO/releases/download/$SDK_VERSION/ohos-sdk-linux-amd64.tar.gz.$part"
+          echo "Downloading OHOS native SDK..."
+          curl -L -f --retry 3 -o /tmp/ohos-native-sdk.tar.gz \
+            "https://github.com/yangaphero/librustdesk_core/releases/download/ohos-native-sdk/ohos-native-sdk.tar.gz"
+
+          echo "Extracting..."
+          tar xzf /tmp/ohos-native-sdk.tar.gz -C "$sdk_root"
+          rm -f /tmp/ohos-native-sdk.tar.gz
+
+          # 验证关键文件
+          for f in "$sdk_root/llvm/bin/clang" "$sdk_root/llvm/bin/clang++" "$sdk_root/llvm/bin/llvm-ar" "$sdk_root/sysroot/usr/lib/aarch64-linux-ohos"; do
+            [ -e "$f" ] || { echo "ERROR: missing $f"; exit 1; }
           done
 
-          # 诊断：文件大小与磁盘
-          ls -la ohos-sdk.aa ohos-sdk.ab
-          df -h "$RUSTDESK_HARMONY_BUILD_DIR"
-          file ohos-sdk.aa
-
-          # 管道流式解压
-          echo "=== starting extraction ==="
-          cat ohos-sdk.aa ohos-sdk.ab | tar xzf - -C "$sdk_root" || {
-            echo "=== EXTRACTION FAILED ==="
-            df -h /
-            ls -la "$sdk_root/" 2>/dev/null | head -20
-            exit 1
-          }
-          echo "=== extraction done ==="
-          rm -f ohos-sdk.aa ohos-sdk.ab
-
-          clang=$(find "$sdk_root" -name clang -type f 2>/dev/null | head -1) || true
-          if [ -z "$clang" ]; then
-            echo "ERROR: clang not found in SDK"
-            echo "=== Directory structure ==="
-            find "$sdk_root" -maxdepth 6 -type d 2>/dev/null | sort | head -100
-            echo "=== clang-like files ==="
-            find "$sdk_root" -name "clang*" -type f 2>/dev/null | head -10
-            exit 1
-          fi
-          echo "Found clang at: $clang"
-
-          llvm_bin_dir=$(dirname "$clang")
-          llvm_dir=$(dirname "$llvm_bin_dir")
-          native_dir=$(dirname "$llvm_dir")
-          sdk_native_root=$(dirname "$native_dir")
-
-          for required in "$native_dir/llvm/bin/clang++" "$native_dir/llvm/bin/llvm-ar" "$native_dir/llvm/bin/llvm-ranlib"; do
-            [ -x "$required" ] || { echo "Missing or not executable: $required"; exit 1; }
-          done
-          [ -d "$native_dir/sysroot" ] || { echo "sysroot not found: $native_dir/sysroot"; exit 1; }
-
-          echo "RUSTDESK_HARMONY_HOST_SDK=$sdk_native_root" >> "$GITHUB_ENV"
-          echo "OHOS_SDK_HOME=$sdk_native_root" >> "$GITHUB_ENV"
-          echo "OHOS_NDK_HOME=$sdk_native_root" >> "$GITHUB_ENV"
-          echo "SDK root: $sdk_native_root"
+          echo "OHOS_SDK_HOME=$sdk_root" >> "$GITHUB_ENV"
+          echo "OHOS_NDK_HOME=$sdk_root" >> "$GITHUB_ENV"
+          echo "RUSTDESK_HARMONY_HOST_SDK=$sdk_root" >> "$GITHUB_ENV"
+          echo "SDK ready: $sdk_root"
 
       - name: 缓存 Cargo 依赖
         uses: actions/cache@v4
@@ -240,7 +207,7 @@ jobs:
           [ -f "$opus_tar" ] || curl -fSL -o "$opus_tar" "https://downloads.xiph.org/releases/opus/opus-$opus_version.tar.gz"
           rm -rf "$opus_root" && mkdir -p "$opus_root"
           tar -xzf "$opus_tar" -C "$opus_root" --strip-components=1
-          sdk_llvm_bin="$RUSTDESK_HARMONY_HOST_SDK/native/llvm/bin"
+          sdk_llvm_bin="$RUSTDESK_HARMONY_HOST_SDK/llvm/bin"
           sdk_sysroot="$RUSTDESK_HARMONY_HOST_SDK/native/sysroot"
           cd "$opus_root"
           export CC="$sdk_llvm_bin/clang"
@@ -268,7 +235,7 @@ jobs:
           rm -rf "$source_dir" && mkdir -p "$source_dir" "$include_dir" "$lib_dir" "$(dirname "$archive_path")"
           [ -f "$archive_path" ] || curl -fSL -o "$archive_path" "https://github.com/webmproject/libvpx/archive/refs/tags/v$version.tar.gz"
           tar -xzf "$archive_path" -C "$source_dir" --strip-components=1
-          sdk_llvm_bin="$RUSTDESK_HARMONY_HOST_SDK/native/llvm/bin"
+          sdk_llvm_bin="$RUSTDESK_HARMONY_HOST_SDK/llvm/bin"
           sdk_sysroot="$RUSTDESK_HARMONY_HOST_SDK/native/sysroot"
           arch_include="$sdk_sysroot/usr/include/$CLANG_TARGET"
           usr_include="$sdk_sysroot/usr/include"
@@ -303,7 +270,7 @@ jobs:
           rm -rf "$source_dir" && mkdir -p "$source_dir" "$(dirname "$archive_path")"
           [ -f "$archive_path" ] || curl -fSL -o "$archive_path" "https://github.com/lemenkov/libyuv/archive/$revision.tar.gz"
           tar -xzf "$archive_path" -C "$source_dir" --strip-components=1
-          sdk_llvm_bin="$RUSTDESK_HARMONY_HOST_SDK/native/llvm/bin"
+          sdk_llvm_bin="$RUSTDESK_HARMONY_HOST_SDK/llvm/bin"
           sdk_sysroot="$RUSTDESK_HARMONY_HOST_SDK/native/sysroot"
           build_dir="$RUSTDESK_HARMONY_BUILD_DIR/external-src/libyuv-$revision-build-$LIB_DIR"
           rm -rf "$build_dir" && mkdir -p "$build_dir" "$include_dir" "$lib_dir"
@@ -325,7 +292,7 @@ jobs:
           rm -rf "$work_root" "$install_dir"
           mkdir -p "$work_root/source" "$install_dir"
           cp -rf "$source_dir" "$work_root/source/libsodium"
-          sdk_llvm_bin="$RUSTDESK_HARMONY_HOST_SDK/native/llvm/bin"
+          sdk_llvm_bin="$RUSTDESK_HARMONY_HOST_SDK/llvm/bin"
           sdk_sysroot="$RUSTDESK_HARMONY_HOST_SDK/native/sysroot"
           arch_include="$sdk_sysroot/usr/include/$CLANG_TARGET"
           usr_include="$sdk_sysroot/usr/include"
