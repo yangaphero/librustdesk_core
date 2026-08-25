@@ -154,12 +154,16 @@ jobs:
           echo "=== extraction done ==="
           rm -f ohos-sdk.aa ohos-sdk.ab
 
-          clang=$(find "$sdk_root" -name clang -type f | grep -E 'native/llvm/bin/clang$' | head -1)
+          clang=$(find "$sdk_root" -name clang -type f 2>/dev/null | head -1) || true
           if [ -z "$clang" ]; then
-            echo "native/llvm/bin/clang was not found."
-            find "$sdk_root" -maxdepth 5 -type d | sort | head -100
+            echo "ERROR: clang not found in SDK"
+            echo "=== Directory structure ==="
+            find "$sdk_root" -maxdepth 6 -type d 2>/dev/null | sort | head -100
+            echo "=== clang-like files ==="
+            find "$sdk_root" -name "clang*" -type f 2>/dev/null | head -10
             exit 1
           fi
+          echo "Found clang at: $clang"
 
           llvm_bin_dir=$(dirname "$clang")
           llvm_dir=$(dirname "$llvm_bin_dir")
