@@ -138,8 +138,20 @@ jobs:
               "https://github.com/$SDK_REPO/releases/download/$SDK_VERSION/ohos-sdk-linux-amd64.tar.gz.$part"
           done
 
-          # 管道流式解压：不创建中间归档文件，节省 2GB 磁盘
-          cat ohos-sdk.aa ohos-sdk.ab | tar xzf - -C "$sdk_root"
+          # 诊断：文件大小与磁盘
+          ls -la ohos-sdk.aa ohos-sdk.ab
+          df -h "$RUSTDESK_HARMONY_BUILD_DIR"
+          file ohos-sdk.aa
+
+          # 管道流式解压
+          echo "=== starting extraction ==="
+          cat ohos-sdk.aa ohos-sdk.ab | tar xzf - -C "$sdk_root" || {
+            echo "=== EXTRACTION FAILED ==="
+            df -h /
+            ls -la "$sdk_root/" 2>/dev/null | head -20
+            exit 1
+          }
+          echo "=== extraction done ==="
           rm -f ohos-sdk.aa ohos-sdk.ab
 
           clang=$(find "$sdk_root" -name clang -type f | grep -E 'native/llvm/bin/clang$' | head -1)
