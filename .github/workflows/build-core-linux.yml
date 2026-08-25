@@ -115,53 +115,31 @@ jobs:
       - name: 准备构建目录
         run: |
           mkdir -p "$RUSTDESK_HARMONY_BUILD_DIR" "$VCPKG_ROOT" "$VCPKG_INSTALLED_ROOT"
-
-      - name: 下载 HarmonyOS SDK
+      - name: 下载 HarmonyOS SDK (公共源)
         env:
-          GH_TOKEN: ${{ secrets.HARMONYOS_SDK_TOKEN }}
-          SDK_REPO: liyan-lucky/HarmonyOS_SDK_Tools
-          SDK_TAG: linux_ohos_sdk_min_6.1.1
-          SDK_ASSET: linux-ohos-sdk-min.zip
+          SDK_VERSION: 6.1.1.280
+          SDK_REPO: ErBWs/ohos-sdk
         run: |
           set -euo pipefail
-          if [ -z "${GH_TOKEN:-}" ]; then
-            echo "Missing repository secret: HARMONYOS_SDK_TOKEN"
-            exit 1
-          fi
-
-          archive_path="$RUSTDESK_HARMONY_BUILD_DIR/$SDK_ASSET"
+          sdk_archive="$RUSTDESK_HARMONY_BUILD_DIR/ohos-sdk.tar.gz"
           sdk_root="$RUSTDESK_HARMONY_BUILD_DIR/ohos-sdk"
           rm -rf "$sdk_root"
           mkdir -p "$sdk_root"
 
-          gh release download "$SDK_TAG" \
-            --repo "$SDK_REPO" \
-            --pattern "$SDK_ASSET" \
-            --dir "$RUSTDESK_HARMONY_BUILD_DIR"
+          cd "$RUSTDESK_HARMONY_BUILD_DIR"
+          for part in aa ab; do
+            curl -L -f --retry 3 -o "ohos-sdk.$part" \
+              "https://github.com/$SDK_REPO/releases/download/$SDK_VERSION/ohos-sdk-linux-amd64.tar.gz.$part"
+          done
 
-          if [ ! -f "$archive_path" ]; then
-            echo "SDK asset was not downloaded: $archive_path"
-            ls -la "$RUSTDESK_HARMONY_BUILD_DIR"
-            exit 1
-          fi
-
-          case "$SDK_ASSET" in
-            *.zip)
-              unzip -q -o "$archive_path" -d "$sdk_root"
-              ;;
-            *.7z)
-              7z x -y "$archive_path" -o"$sdk_root"
-              ;;
-            *)
-              echo "Unsupported SDK archive format: $SDK_ASSET"
-              exit 1
-              ;;
-          esac
+          cat ohos-sdk.aa ohos-sdk.ab > "$sdk_archive"
+          tar xzf "$sdk_archive" -C "$sdk_root"
+          rm -f ohos-sdk.aa ohos-sdk.ab "$sdk_archive"
 
           clang=$(find "$sdk_root" -name clang -type f | grep -E 'native/llvm/bin/clang$' | head -1)
           if [ -z "$clang" ]; then
             echo "native/llvm/bin/clang was not found."
-            find "$sdk_root" -maxdepth 5 -type d | sort | head -200
+            find "$sdk_root" -maxdepth 5 -type d | sort | head -100
             exit 1
           fi
 
@@ -174,13 +152,11 @@ jobs:
             [ -x "$required" ] || { echo "Missing or not executable: $required"; exit 1; }
           done
           [ -d "$native_dir/sysroot" ] || { echo "sysroot not found: $native_dir/sysroot"; exit 1; }
-          [ -d "$native_dir/llvm/lib" ] || { echo "llvm/lib not found: $native_dir/llvm/lib"; exit 1; }
 
           echo "RUSTDESK_HARMONY_HOST_SDK=$sdk_native_root" >> "$GITHUB_ENV"
           echo "OHOS_SDK_HOME=$sdk_native_root" >> "$GITHUB_ENV"
           echo "OHOS_NDK_HOME=$sdk_native_root" >> "$GITHUB_ENV"
           echo "SDK root: $sdk_native_root"
-          ls -la "$native_dir/llvm/bin" | head -80
 
       - name: 缓存 Cargo 依赖
         uses: actions/cache@v4

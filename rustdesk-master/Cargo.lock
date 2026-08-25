@@ -6601,6 +6601,7 @@ dependencies = [
  "strum_macros 0.24.3",
  "widestring",
  "winapi 0.3.9",
+ "x11 2.21.0",
 ]
 
 [[package]]
@@ -6925,6 +6926,7 @@ dependencies = [
  "arboard",
  "async-process",
  "async-trait",
+ "base64 0.22.1",
  "bytemuck",
  "bytes",
  "cc",
