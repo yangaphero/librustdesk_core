@@ -1496,6 +1496,20 @@ impl AudioHandler {
                         unsafe { std::slice::from_raw_parts::<u8>(buffer.as_ptr() as _, n * 4) };
                     self.simple.as_mut().map(|x| x.write(data_u8));
                 }
+                #[cfg(target_env = "ohos")]
+                {
+                    // OHOS: decode f32 PCM -> i16 LE, store for ArkTS pull
+                    let mut pcm_u8 = Vec::with_capacity(n * 2);
+                    for sample in buffer[0..n].iter() {
+                        let s = (*sample * 32767.0).max(-32768.0).min(32767.0) as i16;
+                        pcm_u8.extend_from_slice(&s.to_le_bytes());
+                    }
+                    crate::harmony_bridge::core::push_audio_pcm(
+                        pcm_u8,
+                        self.channels as i32,
+                        self.sample_rate.0 as i32,
+                    );
+                }
             }
         });
     }

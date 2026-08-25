@@ -48,6 +48,7 @@ screencapturekit = ["cpal/screencapturekit"]
 async-trait = "0.1"
 
 hbb_common = { path = "libs/hbb_common" }
+base64 = "0.22"
 libc = "0.2"
 serde_derive = "1.0"
 serde = "1.0"

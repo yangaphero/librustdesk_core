@@ -6,6 +6,31 @@ use hbb_common::config::{self, LanPeers, LocalConfig, PeerConfig};
 use hbb_common::message_proto::*;
 use hbb_common::rendezvous_proto::ConnType;
 use serde_json::json;
+use std::sync::{LazyLock, Mutex};
+
+// OHOS audio PCM buffer: decoded frames stored by client.rs audio handler,
+// drained by ArkTS via pull_audio_frames_json()
+const MAX_AUDIO_FRAMES: usize = 200;
+
+#[derive(Clone)]
+pub struct AudioPcmFrame {
+    pub data_base64: String,
+    pub channels: i32,
+    pub sample_rate: i32,
+}
+
+pub static AUDIO_PCM_FRAMES: LazyLock<Mutex<Vec<AudioPcmFrame>>> =
+    LazyLock::new(|| Mutex::new(Vec::new()));
+
+pub fn push_audio_pcm(pcm: Vec<u8>, channels: i32, sample_rate: i32) {
+    let mut buf = AUDIO_PCM_FRAMES.lock().unwrap();
+    if buf.len() >= MAX_AUDIO_FRAMES {
+        buf.remove(0);
+    }
+    use base64::Engine as _;
+    let data_base64 = base64::engine::general_purpose::STANDARD.encode(&pcm);
+    buf.push(AudioPcmFrame { data_base64, channels, sample_rate });
+}
 use std::collections::HashMap;
 use std::os::raw::c_int;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -303,8 +328,24 @@ pub fn pull_session_events_json() -> String {
 }
 
 /// Pulls pending audio frames as a JSON string.
+/// Drains internal buffer; each frame has base64 16-bit LE PCM.
 pub fn pull_audio_frames_json() -> String {
-    "[]".to_owned()
+    let mut buf = AUDIO_PCM_FRAMES.lock().unwrap();
+    if buf.is_empty() {
+        return "[]".to_owned();
+    }
+    let frames: Vec<_> = buf
+        .drain(..)
+        .map(|f| {
+            json!({
+                "dataBase64": f.data_base64,
+                "channels": f.channels,
+                "sampleRate": f.sample_rate,
+                "format": "S16LE",
+            })
+        })
+        .collect();
+    json!(frames).to_string()
 }
 
 /// Returns the latest video frame metadata as JSON since the given frame ID.
