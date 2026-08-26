@@ -130,12 +130,20 @@ jobs:
           mkdir -p "$sdk_root"
 
           echo "Downloading OHOS native SDK..."
-          curl -L -f --retry 3 -o /tmp/ohos-native-sdk.tar.gz \
-            "https://github.com/yangaphero/librustdesk_core/releases/download/ohos-native-sdk/ohos-native-sdk.tar.gz"
+          curl -L -f --retry 3 -o /tmp/ohos-native-sdk-v2.tar.gz \
+            "https://github.com/yangaphero/librustdesk_core/releases/download/ohos-native-sdk/ohos-native-sdk-v2.tar.gz"
+
+          actual_size=$(stat -c %s /tmp/ohos-native-sdk-v2.tar.gz)
+          expected_size=908023991
+          if [ "$actual_size" != "$expected_size" ]; then
+            echo "ERROR: downloaded file truncated: got $actual_size bytes, expected $expected_size"
+            exit 1
+          fi
+          echo "Download verified: $actual_size bytes"
 
           echo "Extracting..."
-          tar xzf /tmp/ohos-native-sdk.tar.gz -C "$sdk_root"
-          rm -f /tmp/ohos-native-sdk.tar.gz
+          tar xzf /tmp/ohos-native-sdk-v2.tar.gz -C "$sdk_root"
+          rm -f /tmp/ohos-native-sdk-v2.tar.gz
 
           # 验证关键文件
           for f in "$sdk_root/llvm/bin/clang" "$sdk_root/llvm/bin/clang++" "$sdk_root/llvm/bin/llvm-ar" "$sdk_root/sysroot/usr/lib/aarch64-linux-ohos"; do
