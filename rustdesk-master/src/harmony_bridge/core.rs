@@ -553,7 +553,10 @@ pub fn refresh_session_video(display: c_int) -> bool {
         return false;
     };
     let display = display.max(0);
-    session.request_init_msgs(display as usize);
+    // NOTE: do NOT call request_init_msgs here. It sends MessageQuery to the
+    // server, whose SwitchDisplay reply forces a full decoder reset on every
+    // call — a refresh loop then recreates the decoder once per second.
+    // request_init_msgs belongs to the initial handshake only.
     session.refresh_video(display);
     queue_event(
         "video-refresh-requested",
