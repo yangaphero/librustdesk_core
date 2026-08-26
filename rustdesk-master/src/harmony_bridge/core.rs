@@ -74,8 +74,8 @@ static HILOG_INSTALL: std::sync::Once = std::sync::Once::new();
 
 fn install_hilog_logger() {
     HILOG_INSTALL.call_once(|| {
-        let _ = log::set_boxed_logger(Box::new(HilogLogger));
-        log::set_max_level(log::LevelFilter::Debug);
+        let _ = hbb_common::log::set_boxed_logger(Box::new(HilogLogger));
+        hbb_common::log::set_max_level(hbb_common::log::LevelFilter::Debug);
     });
 }
 use std::os::raw::c_int;
