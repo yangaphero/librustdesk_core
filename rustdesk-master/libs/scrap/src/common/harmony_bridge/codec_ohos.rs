@@ -87,6 +87,8 @@ unsafe extern "C" {
         output: *mut u8,
         capacity: usize,
     ) -> i64;
+    fn rustdesk_ohos_video_decoder_lock_output(handle: *mut c_void, out_len: *mut i64) -> *const u8;
+    fn rustdesk_ohos_video_decoder_unlock_output(handle: *mut c_void);
 }
 
 struct OhosVideoDecoder {
@@ -168,28 +170,27 @@ impl OhosVideoDecoder {
             if frame_size <= 0 || width <= 0 || height <= 0 || stride <= 0 {
                 continue;
             }
-            self.frame.resize(frame_size as usize, 0);
-            let copied = unsafe {
-                rustdesk_ohos_video_decoder_copy_frame(
-                    self.handle,
-                    self.frame.as_mut_ptr(),
-                    self.frame.len(),
-                )
-            };
-            if copied != frame_size {
-                return Err(anyhow!(
-                    "OHOS native video decoder copy failed: expected={frame_size}, copied={copied}"
-                ));
+            // Zero-copy path: convert directly from the codec output buffer.
+            let mut out_len: i64 = 0;
+            let src = unsafe { rustdesk_ohos_video_decoder_lock_output(self.handle, &mut out_len) };
+            if src.is_null() || out_len < frame_size {
+                if !src.is_null() {
+                    unsafe { rustdesk_ohos_video_decoder_unlock_output(self.handle) };
+                }
+                continue;
             }
-            Self::convert_frame(
-                &self.frame,
+            let src_slice = unsafe { std::slice::from_raw_parts(src, out_len as usize) };
+            let convert_result = Self::convert_frame(
+                src_slice,
                 width as usize,
                 height as usize,
                 stride as usize,
                 std::cmp::max(height, slice_height) as usize,
                 pixel_format,
                 rgb,
-            )?;
+            );
+            unsafe { rustdesk_ohos_video_decoder_unlock_output(self.handle) };
+            convert_result?;
             produced = true;
         }
         Ok(produced || accepted)
