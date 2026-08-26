@@ -150,6 +150,10 @@ jobs:
             [ -e "$f" ] || { echo "ERROR: missing $f"; exit 1; }
           done
 
+          # 兼容标准 DevEco 布局（scripts/_ohos-sdk-env.sh 期望 $SDK/native/llvm/bin）
+          ln -s . "$sdk_root/native"
+          [ -e "$sdk_root/native/llvm/bin/clang" ] || { echo "ERROR: native symlink failed"; exit 1; }
+
           echo "OHOS_SDK_HOME=$sdk_root" >> "$GITHUB_ENV"
           echo "OHOS_NDK_HOME=$sdk_root" >> "$GITHUB_ENV"
           echo "RUSTDESK_HARMONY_HOST_SDK=$sdk_root" >> "$GITHUB_ENV"
