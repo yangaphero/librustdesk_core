@@ -127,6 +127,11 @@ impl OhosVideoDecoder {
 
     fn decode(&mut self, frames: &EncodedVideoFrames, rgb: &mut ImageRgb) -> ResultType<bool> {
         let mut produced = false;
+        // Hardware decoders pipeline: an accepted input may not yield its
+        // output within this call. Treat successful submission as progress
+        // (Ok(true)) so the caller's fail-counter only trips on real errors;
+        // frames surface through subsequent polls.
+        let mut accepted = false;
         for frame in &frames.frames {
             let status = unsafe {
                 rustdesk_ohos_video_decoder_submit(
@@ -143,6 +148,7 @@ impl OhosVideoDecoder {
             if status == 0 {
                 continue;
             }
+            accepted = true;
 
             let mut width = 0;
             let mut height = 0;
@@ -186,7 +192,7 @@ impl OhosVideoDecoder {
             )?;
             produced = true;
         }
-        Ok(produced)
+        Ok(produced || accepted)
     }
 
     fn convert_frame(
