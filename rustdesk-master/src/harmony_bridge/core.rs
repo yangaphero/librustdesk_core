@@ -32,6 +32,52 @@ pub fn push_audio_pcm(pcm: Vec<u8>, channels: i32, sample_rate: i32) {
     buf.push(AudioPcmFrame { data_base64, channels, sample_rate });
 }
 use std::collections::HashMap;
+
+// Forward core log records to the host .so's hilog so failures inside the
+// decode/negotiation path become visible on device (hilog tag: RustDeskCore).
+extern "C" {
+    fn rustdesk_ohos_native_log(level: i32, msg: *const std::os::raw::c_char);
+}
+
+struct HilogLogger;
+
+impl log::Log for HilogLogger {
+    fn enabled(&self, metadata: &log::Metadata) -> bool {
+        metadata.level() <= log::Level::Debug
+    }
+    fn log(&self, record: &log::Record) {
+        if !self.enabled(record.metadata()) {
+            return;
+        }
+        let line = format!(
+            "[{}] {}:{} {}",
+            record.level(),
+            record.file().unwrap_or("?"),
+            record.line().unwrap_or(0),
+            record.args()
+        );
+        // hilog LogLevel: DEBUG=3, INFO=4, WARN=5, ERROR=6
+        let level = match record.level() {
+            log::Level::Error => 6,
+            log::Level::Warn => 5,
+            log::Level::Info => 4,
+            _ => 3,
+        };
+        if let Ok(cstr) = std::ffi::CString::new(line) {
+            unsafe { rustdesk_ohos_native_log(level, cstr.as_ptr()) };
+        }
+    }
+    fn flush(&self) {}
+}
+
+static HILOG_INSTALL: std::sync::Once = std::sync::Once::new();
+
+fn install_hilog_logger() {
+    HILOG_INSTALL.call_once(|| {
+        let _ = log::set_boxed_logger(Box::new(HilogLogger));
+        log::set_max_level(log::LevelFilter::Debug);
+    });
+}
 use std::os::raw::c_int;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
@@ -308,6 +354,7 @@ pub fn get_core_snapshot_json(server: &str) -> String {
 /// Initializes the runtime with the given app directory and custom client config.
 /// Returns a JSON string with initialization result.
 pub fn initialize_runtime(app_dir: &str, _custom_client_config: &str) -> String {
+    install_hilog_logger();
     set_local_option("app_dir", app_dir);
     if !app_dir.trim().is_empty() {
         *config::APP_DIR.write().unwrap() = app_dir.trim().to_owned();
