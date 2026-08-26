@@ -1453,10 +1453,6 @@ impl AudioHandler {
         if self.audio_stream.is_none() || !self.ready.lock().unwrap().clone() {
             return;
         }
-        #[cfg(target_env = "ohos")]
-        {
-            return;
-        }
         #[cfg(all(target_os = "linux", not(target_env = "ohos")))]
         if self.simple.is_none() {
             log::debug!("PulseAudio simple binding does not exists");

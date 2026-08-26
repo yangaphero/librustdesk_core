@@ -34,7 +34,7 @@ pub fn push_audio_pcm(pcm: Vec<u8>, channels: i32, sample_rate: i32) {
 use std::collections::HashMap;
 use std::os::raw::c_int;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, OnceLock, RwLock};
+use std::sync::{Arc, OnceLock, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 static CONNECT_STATE: OnceLock<Mutex<ConnectState>> = OnceLock::new();
