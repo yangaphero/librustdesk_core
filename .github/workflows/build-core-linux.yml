@@ -206,6 +206,15 @@ jobs:
           fi
           test -d "$crate_dir/libsodium"
 
+          # 给 registry 中的真实 libsodium-sys 打补丁：
+          # - HOST 侧（rustdesk 的 build-dependencies hbb_common 链）：不发任何链接指令，
+          #   extern 声明未被引用即被丢弃，build script 可正常链接（无需 host libsodium）
+          # - CROSS 侧（OHOS 目标）：必须使用 SODIUM_LIB_DIR 预编译库，禁止触发 vendored
+          #   autotools 构建（config.sub 不识别 OHOS triple）
+          python3 scripts/patch_libsodium_sys.py \
+            "$HOME/.cargo/registry/src"/*/libsodium-sys-0.2.7/build.rs \
+            "$crate_dir/build.rs"
+
       - name: 编译 libopus
         run: |
           opus_version="1.5.2"
