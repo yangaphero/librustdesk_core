@@ -41,11 +41,11 @@ extern "C" {
 
 struct HilogLogger;
 
-impl log::Log for HilogLogger {
-    fn enabled(&self, metadata: &log::Metadata) -> bool {
-        metadata.level() <= log::Level::Debug
+impl hbb_common::log::Log for HilogLogger {
+    fn enabled(&self, metadata: &hbb_common::log::Metadata) -> bool {
+        metadata.level() <= hbb_common::log::Level::Debug
     }
-    fn log(&self, record: &log::Record) {
+    fn log(&self, record: &hbb_common::log::Record) {
         if !self.enabled(record.metadata()) {
             return;
         }
@@ -58,9 +58,9 @@ impl log::Log for HilogLogger {
         );
         // hilog LogLevel: DEBUG=3, INFO=4, WARN=5, ERROR=6
         let level = match record.level() {
-            log::Level::Error => 6,
-            log::Level::Warn => 5,
-            log::Level::Info => 4,
+            hbb_common::log::Level::Error => 6,
+            hbb_common::log::Level::Warn => 5,
+            hbb_common::log::Level::Info => 4,
             _ => 3,
         };
         if let Ok(cstr) = std::ffi::CString::new(line) {
