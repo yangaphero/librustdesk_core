@@ -216,7 +216,7 @@ jobs:
           rm -rf "$opus_root" && mkdir -p "$opus_root"
           tar -xzf "$opus_tar" -C "$opus_root" --strip-components=1
           sdk_llvm_bin="$RUSTDESK_HARMONY_HOST_SDK/llvm/bin"
-          sdk_sysroot="$RUSTDESK_HARMONY_HOST_SDK/native/sysroot"
+          sdk_sysroot="$RUSTDESK_HARMONY_HOST_SDK/sysroot"
           cd "$opus_root"
           export CC="$sdk_llvm_bin/clang"
           export AR="$sdk_llvm_bin/llvm-ar"
@@ -244,7 +244,7 @@ jobs:
           [ -f "$archive_path" ] || curl -fSL -o "$archive_path" "https://github.com/webmproject/libvpx/archive/refs/tags/v$version.tar.gz"
           tar -xzf "$archive_path" -C "$source_dir" --strip-components=1
           sdk_llvm_bin="$RUSTDESK_HARMONY_HOST_SDK/llvm/bin"
-          sdk_sysroot="$RUSTDESK_HARMONY_HOST_SDK/native/sysroot"
+          sdk_sysroot="$RUSTDESK_HARMONY_HOST_SDK/sysroot"
           arch_include="$sdk_sysroot/usr/include/$CLANG_TARGET"
           usr_include="$sdk_sysroot/usr/include"
           cd "$source_dir"
@@ -279,7 +279,7 @@ jobs:
           [ -f "$archive_path" ] || curl -fSL -o "$archive_path" "https://github.com/lemenkov/libyuv/archive/$revision.tar.gz"
           tar -xzf "$archive_path" -C "$source_dir" --strip-components=1
           sdk_llvm_bin="$RUSTDESK_HARMONY_HOST_SDK/llvm/bin"
-          sdk_sysroot="$RUSTDESK_HARMONY_HOST_SDK/native/sysroot"
+          sdk_sysroot="$RUSTDESK_HARMONY_HOST_SDK/sysroot"
           build_dir="$RUSTDESK_HARMONY_BUILD_DIR/external-src/libyuv-$revision-build-$LIB_DIR"
           rm -rf "$build_dir" && mkdir -p "$build_dir" "$include_dir" "$lib_dir"
           c_flags="--target=$CLANG_TARGET --sysroot=$sdk_sysroot -D__MUSL__ -fPIC -O2"
@@ -301,7 +301,7 @@ jobs:
           mkdir -p "$work_root/source" "$install_dir"
           cp -rf "$source_dir" "$work_root/source/libsodium"
           sdk_llvm_bin="$RUSTDESK_HARMONY_HOST_SDK/llvm/bin"
-          sdk_sysroot="$RUSTDESK_HARMONY_HOST_SDK/native/sysroot"
+          sdk_sysroot="$RUSTDESK_HARMONY_HOST_SDK/sysroot"
           arch_include="$sdk_sysroot/usr/include/$CLANG_TARGET"
           usr_include="$sdk_sysroot/usr/include"
           cd "$work_root/source/libsodium"
