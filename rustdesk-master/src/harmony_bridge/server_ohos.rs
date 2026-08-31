@@ -1249,11 +1249,13 @@ async fn handle_incoming_message(
                 return true;
             }
 
-            // Click approval: mirror the official flow. The client receives
-            // "No Password Access" (it then shows a waiting dialog and retries
-            // the LoginRequest automatically); once the local user accepts, the
-            // retry is authorized through a one-time approval token.
-            if needs_click_approval() {
+            // Click approval: mirror the official flow. Connections that
+            // authenticated with a non-empty password are authorized directly;
+            // empty-password connections wait for the local user to accept.
+            // The client receives "No Password Access" (it then shows a waiting
+            // dialog and retries the LoginRequest automatically); once the
+            // local user accepts, the retry is authorized via a one-time token.
+            if needs_click_approval() && lr.password.is_empty() {
                 let conn_type_str = if is_file_transfer { "file-transfer" } else { "remote-control" };
                 match check_click_approval(id, &lr.my_id, &lr.my_name, conn_type_str, &lr.version) {
                     0 => {
