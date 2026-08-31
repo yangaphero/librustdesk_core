@@ -1090,6 +1090,15 @@ pub extern "C" fn rustdesk_bridge_main_set_option(key: *const c_char, value: *co
 }
 
 #[no_mangle]
+pub extern "C" fn rustdesk_bridge_server_respond_connection_request(
+    peer_id: *const c_char,
+    accept: bool,
+) -> bool {
+    let peer_id = read_c_string(peer_id);
+    rustdesk_core::respond_connection_request(&peer_id, accept)
+}
+
+#[no_mangle]
 pub extern "C" fn rustdesk_bridge_main_get_options() -> *const c_char {
     to_owned_c_string(rustdesk_core::harmony_bridge::main_get_options())
 }

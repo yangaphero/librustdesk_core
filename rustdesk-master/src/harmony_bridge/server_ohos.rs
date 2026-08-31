@@ -963,6 +963,109 @@ lazy_static::lazy_static! {
 lazy_static::lazy_static! {
     static ref ALIVE_CONNS: Arc<Mutex<Vec<i32>>> = Default::default();
     static ref PEER_CONNS: Arc<Mutex<HashMap<String, i32>>> = Default::default();
+    static ref PENDING_APPROVALS: Arc<Mutex<HashMap<String, PendingApproval>>> = Default::default();
+    static ref APPROVED_PEERS: Arc<Mutex<HashMap<String, std_time::Instant>>> = Default::default();
+    static ref REJECTED_PEERS: Arc<Mutex<HashMap<String, std_time::Instant>>> = Default::default();
+}
+
+const APPROVAL_TOKEN_TTL: std_time::Duration = std_time::Duration::from_secs(60);
+
+pub struct PendingApproval {
+    pub conn_id: i32,
+    pub name: String,
+    pub conn_type: String,
+    pub version: String,
+    pub requested_at: std_time::Instant,
+}
+
+pub fn needs_click_approval() -> bool {
+    let approve_mode = password::approve_mode();
+    approve_mode == ApproveMode::Click
+        || (approve_mode == ApproveMode::Both && !password::has_valid_password())
+}
+
+/// Called on each LoginRequest when click approval is required.
+/// Returns:
+///   0 -> keep waiting (approval pending; a NO_PASSWORD_ACCESS error was already sent)
+///   1 -> approved (consume token; caller proceeds with normal authorization)
+///   2 -> rejected (caller should send error and close the connection)
+pub fn check_click_approval(id: i32, peer_id: &str, peer_name: &str, conn_type: &str, version: &str) -> i32 {
+    // 1) one-time approval token from a previous Accept action
+    if let Some(at) = APPROVED_PEERS.lock().unwrap().remove(peer_id) {
+        if at.elapsed() < APPROVAL_TOKEN_TTL {
+            return 1;
+        }
+    }
+    // 2) fresh rejection window: reject immediately
+    {
+        let rejected = REJECTED_PEERS.lock().unwrap();
+        if let Some(at) = rejected.get(peer_id) {
+            if at.elapsed() < APPROVAL_TOKEN_TTL {
+                return 2;
+            }
+        }
+    }
+    // 3) register/reuse pending entry and ask the UI again on the first request only
+    {
+        let mut pending = PENDING_APPROVALS.lock().unwrap();
+        match pending.get(peer_id) {
+            Some(existing) if existing.requested_at.elapsed() < APPROVAL_TOKEN_TTL => {
+                return 0;
+            }
+            _ => {}
+        }
+        pending.insert(
+            peer_id.to_owned(),
+            PendingApproval {
+                conn_id: id,
+                name: peer_name.to_owned(),
+                conn_type: conn_type.to_owned(),
+                version: version.to_owned(),
+                requested_at: std_time::Instant::now(),
+            },
+        );
+    }
+    REJECTED_PEERS.lock().unwrap().remove(peer_id);
+    crate::harmony_bridge::core::queue_event(
+        "connection-request",
+        &format!(
+            "id={};name={};type={};version={}",
+            peer_id, peer_name, conn_type, version
+        ),
+        peer_id,
+    );
+    log::info!(
+        "OHOS Connection #{} waiting for user approval: peer={} name={} type={}",
+        id,
+        peer_id,
+        peer_name,
+        conn_type
+    );
+    0
+}
+
+/// JS entry: respond to a pending incoming-connection request.
+pub fn respond_connection_request(peer_id: &str, accept: bool) -> bool {
+    PENDING_APPROVALS.lock().unwrap().remove(peer_id);
+    if accept {
+        REJECTED_PEERS.lock().unwrap().remove(peer_id);
+        APPROVED_PEERS
+            .lock()
+            .unwrap()
+            .insert(peer_id.to_owned(), std_time::Instant::now());
+    } else {
+        APPROVED_PEERS.lock().unwrap().remove(peer_id);
+        REJECTED_PEERS
+            .lock()
+            .unwrap()
+            .insert(peer_id.to_owned(), std_time::Instant::now());
+    }
+    log::info!(
+        "OHOS connection approval decision: peer={} accept={}",
+        peer_id,
+        accept
+    );
+    true
 }
 
 const TEST_DELAY_TIMEOUT: Duration = Duration::from_secs(1);
@@ -1144,6 +1247,38 @@ async fn handle_incoming_message(
                 // Closing here turns an ordinary empty/wrong-password challenge
                 // into "Connection reset by peer" before the prompt is usable.
                 return true;
+            }
+
+            // Click approval: mirror the official flow. The client receives
+            // "No Password Access" (it then shows a waiting dialog and retries
+            // the LoginRequest automatically); once the local user accepts, the
+            // retry is authorized through a one-time approval token.
+            if needs_click_approval() {
+                let conn_type_str = if is_file_transfer { "file-transfer" } else { "remote-control" };
+                match check_click_approval(id, &lr.my_id, &lr.my_name, conn_type_str, &lr.version) {
+                    0 => {
+                        let mut res = LoginResponse::new();
+                        res.set_error(crate::client::LOGIN_MSG_NO_PASSWORD_ACCESS.to_owned());
+                        let mut msg_out = Message::new();
+                        msg_out.set_login_response(res);
+                        stream.send(&msg_out).await.ok();
+                        return true;
+                    }
+                    2 => {
+                        let mut res = LoginResponse::new();
+                        res.set_error("Connection rejected by the peer".to_owned());
+                        let mut msg_out = Message::new();
+                        msg_out.set_login_response(res);
+                        stream.send(&msg_out).await.ok();
+                        crate::harmony_bridge::core::queue_event(
+                            "login-failed",
+                            &format!("id={} rejected by user", lr.my_id),
+                            &lr.my_id,
+                        );
+                        return false;
+                    }
+                    _ => {}
+                }
             }
 
             *authorized = true;
@@ -1440,6 +1575,7 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 fn cleanup_connection(id: i32, server: &ServerPtrWeak, inner: &ConnInner) {
     ALIVE_CONNS.lock().unwrap().retain(|&x| x != id);
     PEER_CONNS.lock().unwrap().retain(|_, v| *v != id);
+    PENDING_APPROVALS.lock().unwrap().retain(|_, p| p.conn_id != id);
     if let Some(s) = server.upgrade() {
         s.write().unwrap().remove_connection(inner);
     }
