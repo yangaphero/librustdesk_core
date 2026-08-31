@@ -2309,7 +2309,10 @@ impl LoginConfigHandler {
                 quality
             };
             msg.custom_image_quality = quality << 8;
-            #[cfg(feature = "flutter")]
+            // Include custom-fps in the login options for every UI bridge.
+            // The historical #[cfg(feature = "flutter")] gate silently dropped
+            // it on non-flutter builds (e.g. HarmonyOS), making the peer's
+            // VideoQoS fall back to its default 30 fps cap.
             if let Some(custom_fps) = self.options.get("custom-fps") {
                 let mut custom_fps = custom_fps.parse().unwrap_or(30);
                 if !allow_more && custom_fps > 30 {
