@@ -1092,10 +1092,14 @@ pub extern "C" fn rustdesk_bridge_main_set_option(key: *const c_char, value: *co
 #[no_mangle]
 pub extern "C" fn rustdesk_bridge_server_respond_connection_request(
     peer_id: *const c_char,
-    accept: bool,
-) -> bool {
+    accept: c_int,
+) -> c_int {
     let peer_id = read_c_string(peer_id);
-    rustdesk_core::respond_connection_request(&peer_id, accept)
+    if rustdesk_core::respond_connection_request(&peer_id, accept != 0) {
+        1
+    } else {
+        0
+    }
 }
 
 #[no_mangle]
