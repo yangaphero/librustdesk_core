@@ -424,7 +424,12 @@ pub fn copy_latest_video_frame(frame_id: u64, buffer: &mut [u8]) -> c_int {
     let Some(frame) = guard.as_ref() else {
         return 0;
     };
-    if frame.frame_id != frame_id || buffer.len() < frame.bytes.len() {
+    // The JS side reads metadata first and copies second. When a newer frame
+    // lands in between, serve the stored (newer) frame instead of failing the
+    // copy: frames of the same session keep the same byte size, so the buffer
+    // still fits, and the next metadata read reports the newer frame id.
+    // Only a request older than the stored frame (stale after a reset) fails.
+    if frame.frame_id < frame_id || buffer.len() < frame.bytes.len() {
         return 0;
     }
     buffer[..frame.bytes.len()].copy_from_slice(&frame.bytes);
@@ -462,7 +467,9 @@ pub fn copy_incoming_screen_frame(frame_id: u64, buffer: &mut [u8]) -> c_int {
     let Some(frame) = guard.as_ref() else {
         return 0;
     };
-    if frame.frame_id != frame_id || frame.bytes.is_empty() || buffer.len() < frame.bytes.len() {
+    // Same newer-frame policy as copy_latest_video_frame: serve the stored
+    // frame when the request is stale instead of failing the copy.
+    if frame.frame_id < frame_id || frame.bytes.is_empty() || buffer.len() < frame.bytes.len() {
         return 0;
     }
     buffer[..frame.bytes.len()].copy_from_slice(&frame.bytes);
